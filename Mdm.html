@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>बच्चों की उपस्थिति (Attendance)</title>
+<style>
+  :root{
+    --primary:#2563eb;
+    --present:#16a34a;
+    --absent:#dc2626;
+    --bg:#f3f4f6;
+    --card:#ffffff;
+    --text:#111827;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Segoe UI', Roboto, Arial, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    padding-bottom:40px;
+  }
+  header{
+    background:var(--primary);
+    color:#fff;
+    padding:18px 16px;
+    text-align:center;
+    box-shadow:0 2px 6px rgba(0,0,0,0.15);
+  }
+  header h1{margin:0;font-size:20px;}
+  header p{margin:4px 0 0;font-size:13px;opacity:0.9;}
+
+  .container{max-width:720px;margin:0 auto;padding:14px;}
+
+  .class-tabs{
+    display:flex;
+    overflow-x:auto;
+    gap:8px;
+    padding:12px 14px 4px;
+    background:var(--card);
+    position:sticky;
+    top:0;
+    z-index:10;
+    box-shadow:0 2px 4px rgba(0,0,0,0.05);
+  }
+  .class-tab{
+    flex:0 0 auto;
+    padding:8px 14px;
+    border-radius:20px;
+    background:var(--bg);
+    border:1px solid var(--border);
+    font-weight:600;
+    font-size:14px;
+    cursor:pointer;
+    white-space:nowrap;
+    user-select:none;
+  }
+  .class-tab.active{
+    background:var(--primary);
+    color:#fff;
+    border-color:var(--primary);
+  }
+
+  .card{
+    background:var(--card);
+    border-radius:12px;
+    padding:14px;
+    margin:12px 0;
+    box-shadow:0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card h2{
+    font-size:15px;
+    margin:0 0 10px;
+    color:var(--primary);
+  }
+
+  .row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;}
+  input[type="text"], input[type="date"], select{
+    flex:1;
+    min-width:120px;
+    padding:9px 10px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    font-size:14px;
+    background:#fff;
+  }
+  .date-display{
+    font-size:13.5px;
+    font-weight:700;
+    color:var(--primary);
+    background:#eff6ff;
+    padding:8px 12px;
+    border-radius:8px;
+    white-space:nowrap;
+  }
+  button{
+    border:none;
+    border-radius:8px;
+    padding:9px 14px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .btn-add{background:var(--primary);color:#fff;}
+  .btn-del{background:none;color:var(--absent);font-size:16px;padding:4px 8px;cursor:pointer;}
+
+  .student-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 4px;
+    border-bottom:1px solid var(--border);
+    gap:8px;
+  }
+  .student-row:last-child{border-bottom:none;}
+  .s-name{flex:1;font-size:14.5px;font-weight:500;}
+
+  .toggle-group{display:flex;gap:6px;}
+  .toggle-btn{
+    padding:7px 13px;
+    border-radius:6px;
+    font-size:13px;
+    border:1.5px solid var(--border);
+    background:#fff;
+    color:var(--muted);
+    cursor:pointer;
+    font-weight:600;
+  }
+  .toggle-btn.present-active{background:var(--present);color:#fff;border-color:var(--present);}
+  .toggle-btn.absent-active{background:var(--absent);color:#fff;border-color:var(--absent);}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th,td{padding:8px 6px;text-align:center;border-bottom:1px solid var(--border);}
+  th{color:var(--muted);font-weight:600;font-size:12.5px;}
+  td:first-child, th:first-child{text-align:right;font-weight:500;}
+  tr.total-row td{font-weight:700;color:var(--primary);border-top:2px solid var(--primary);border-bottom:none;}
+
+  .group-summary{display:flex;gap:10px;}
+  .group-box{
+    flex:1;
+    text-align:center;
+    background:#eff6ff;
+    border-radius:10px;
+    padding:14px 8px;
+  }
+  .group-box .g-label{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:6px;}
+  .group-box .g-value{font-size:24px;font-weight:800;color:var(--primary);}
+
+  .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:14px 0;}
+  .status{font-size:12.5px;color:var(--present);text-align:center;margin-top:6px;min-height:16px;font-weight:600;}
+  .warn{font-size:12px;color:#b45309;text-align:center;padding:6px 0;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>बच्चों की उपस्थिति</h1>
+</header>
+
+<div class="class-tabs" id="classTabs"></div>
+
+<div class="container">
+  <div class="warn" id="storageWarn" style="display:none;"></div>
+
+  <div class="card">
+    <h2>➕ नया बच्चा जोड़ें (कक्षा <span id="addClassLabel">1</span>)</h2>
+    <div class="row">
+      <input type="text" id="studentNameInput" placeholder="बच्चे का नाम लिखें...">
+      <button class="btn-add" id="addStudentBtn">जोड़ें</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📅 उपस्थिति दर्ज करें</h2>
+    <div class="row">
+      <input type="date" id="attendanceDate" lang="en-GB">
+    </div>
+    <div id="studentListForAttendance"></div>
+    <div class="empty" id="noStudentsMsg" style="display:none;">पहले इस कक्षा में बच्चे जोड़ें</div>
+  </div>
+
+  <div class="card">
+    <h2>📊 उपस्थिति रिपोर्ट (कक्षा <span id="reportClassLabel">1</span>)</h2>
+    <div class="row">
+      <select id="reportMonthSelect"></select>
+    </div>
+    <table id="reportTable">
+      <thead>
+        <tr><th>Name</th><th id="presentDayHeader">Present Day</th><th>Total Day</th></tr>
+      </thead>
+      <tbody id="reportBody"></tbody>
+    </table>
+    <div class="empty" id="noReportMsg" style="display:none;">अभी कोई डेटा नहीं है</div>
+  </div>
+
+  <div class="card">
+    <h2>🗓️ MDM Report</h2>
+    <div class="empty" id="mdmMonthLabel" style="padding:0 0 8px;color:var(--muted);"></div>
+    <div class="group-summary">
+      <div class="group-box">
+        <div class="g-label">Class 1 to 5</div>
+        <div class="g-value" id="group15Total">0</div>
+      </div>
+      <div class="group-box">
+        <div class="g-label">Class 6 to 8</div>
+        <div class="g-value" id="group68Total">0</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDFEd8mwCYq7tFK70XWuQgBh0N1GPMdUTA",
+    authDomain: "mdmm-8b11f.firebaseapp.com",
+    databaseURL: "https://mdmm-8b11f-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "mdmm-8b11f",
+    storageBucket: "mdmm-8b11f.firebasestorage.app",
+    messagingSenderId: "912549970923",
+    appId: "1:912549970923:web:8f46e11a75d1bc52008fae"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // expose to the main app script below
+  window.fbDb = db;
+  window.fbRef = ref;
+  window.fbSet = set;
+  window.fbOnValue = onValue;
+</script>
+
+<script type="module">
+(function(){
+
+let currentClass = 1;
+let studentsCache = {};   // {classNum: [{id, name}]}
+let attendanceCache = {}; // {classNum: {dateStr: {studentId: 'P'|'A'}}}
+let pendingMarks = {};    // studentId -> 'P'|'A' for currently selected date
+
+const todayStr = new Date().toISOString().split('T')[0];
+const currentMonthPrefix = todayStr.slice(0, 7); // "YYYY-MM"
+let selectedReportMonth = currentMonthPrefix;
+const dateInput = document.getElementById('attendanceDate');
+dateInput.value = todayStr;
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function monthLabel(prefix){
+  const parts = prefix.split('-');
+  const y = parts[0];
+  const m = parseInt(parts[1], 10) - 1;
+  return MONTH_NAMES[m] + ' ' + y;
+}
+
+function buildMonthDropdown(){
+  const sel = document.getElementById('reportMonthSelect');
+  sel.innerHTML = '';
+  const now = new Date();
+  for(let i=0;i<12;i++){
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const prefix = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    const opt = document.createElement('option');
+    opt.value = prefix;
+    opt.textContent = monthLabel(prefix);
+    if(prefix === selectedReportMonth) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+document.getElementById('reportMonthSelect').addEventListener('change', function(e){
+  selectedReportMonth = e.target.value;
+  renderReport();
+  renderMonthlySummary();
+});
+
+function toDDMMYY(isoDate){
+  if(!isoDate) return '';
+  const parts = isoDate.split('-'); // yyyy-mm-dd
+  if(parts.length !== 3) return isoDate;
+  const yy = parts[0].slice(2);
+  return parts[2] + '/' + parts[1] + '/' + yy;
+}
+
+function updateDateDisplay(){
+  const header = document.getElementById('presentDayHeader');
+  if(header) header.textContent = toDDMMYY(dateInput.value);
+}
+updateDateDisplay();
+
+function studentsKey(c){ return 'students-class-' + c; }
+function attendanceKey(c){ return 'attendance-class-' + c; }
+function studentsPath(c){ return 'students/class' + c; }
+function attendancePath(c){ return 'attendance/class' + c; }
+
+// ---- local backup (always works, even fully offline) ----
+async function localGet(key){
+  try{
+    const r = await window.storage.get(key, false);
+    return r ? r.value : null;
+  }catch(e){
+    return null;
+  }
+}
+async function localSet(key, value){
+  try{
+    await window.storage.set(key, value, false);
+  }catch(e){ /* ignore - local backup is best-effort */ }
+}
+
+function showOfflineWarning(){
+  const w = document.getElementById('storageWarn');
+  w.style.display = 'block';
+  w.textContent = '⚠️ Firebase से कनेक्ट नहीं हो पा रहा — डेटा अभी इस डिवाइस पर सुरक्षित है, इंटरनेट आते ही अपने आप सिंक हो जाएगा।';
+}
+function hideOfflineWarning(){
+  document.getElementById('storageWarn').style.display = 'none';
+}
+
+// ---- 1) load local copy first, so the app works instantly even offline ----
+async function loadLocalFirst(){
+  for(let c=1;c<=8;c++){
+    const sRaw = await localGet(studentsKey(c));
+    try{ studentsCache[c] = sRaw ? JSON.parse(sRaw) : []; }catch(e){ studentsCache[c] = []; }
+    const aRaw = await localGet(attendanceKey(c));
+    try{ attendanceCache[c] = aRaw ? JSON.parse(aRaw) : {}; }catch(e){ attendanceCache[c] = {}; }
+  }
+}
+
+// ---- 2) attach live Firebase listeners: whenever server data changes (including
+//         right after reconnecting), pull it in, refresh the screen and refresh the local backup ----
+function attachFirebaseListeners(){
+  for(let c=1;c<=8;c++){
+    (function(c){
+      window.fbOnValue(window.fbRef(window.fbDb, studentsPath(c)), function(snapshot){
+        const val = snapshot.val();
+        const arr = val ? (Array.isArray(val) ? val.filter(Boolean) : Object.values(val)) : [];
+        studentsCache[c] = arr;
+        localSet(studentsKey(c), JSON.stringify(arr));
+        hideOfflineWarning();
+        if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
+        renderReport();
+        renderMonthlySummary();
+      }, function(){ showOfflineWarning(); });
+
+      window.fbOnValue(window.fbRef(window.fbDb, attendancePath(c)), function(snapshot){
+        const val = snapshot.val() || {};
+        attendanceCache[c] = val;
+        localSet(attendanceKey(c), JSON.stringify(val));
+        hideOfflineWarning();
+        if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
+        renderReport();
+        renderMonthlySummary();
+      }, function(){ showOfflineWarning(); });
+    })(c);
+  }
+}
+
+// ---- 3) every write: save locally immediately, then push to Firebase ----
+async function persistStudents(c){
+  await localSet(studentsKey(c), JSON.stringify(studentsCache[c]));
+  try{
+    await window.fbSet(window.fbRef(window.fbDb, studentsPath(c)), studentsCache[c]);
+    hideOfflineWarning();
+  }catch(e){
+    showOfflineWarning();
+  }
+}
+async function persistAttendance(c){
+  await localSet(attendanceKey(c), JSON.stringify(attendanceCache[c]));
+  try{
+    await window.fbSet(window.fbRef(window.fbDb, attendancePath(c)), attendanceCache[c]);
+    hideOfflineWarning();
+  }catch(e){
+    showOfflineWarning();
+  }
+}
+
+// ---- 4) as soon as internet comes back, push whatever we have locally to Firebase ----
+window.addEventListener('online', function(){
+  for(let c=1;c<=8;c++){
+    persistStudents(c);
+    persistAttendance(c);
+  }
+});
+
+function buildTabs(){
+  const wrap = document.getElementById('classTabs');
+  wrap.innerHTML = '';
+  for(let i=1;i<=8;i++){
+    const tab = document.createElement('div');
+    tab.className = 'class-tab' + (i===currentClass ? ' active' : '');
+    tab.textContent = 'कक्षा ' + i;
+    tab.dataset.classNum = i;
+    wrap.appendChild(tab);
+  }
+}
+
+document.getElementById('classTabs').addEventListener('click', async function(e){
+  const tab = e.target.closest('.class-tab');
+  if(!tab) return;
+  const c = parseInt(tab.dataset.classNum, 10);
+  await switchClass(c);
+});
+
+async function switchClass(c){
+  currentClass = c;
+  buildTabs();
+  document.getElementById('addClassLabel').textContent = c;
+  document.getElementById('reportClassLabel').textContent = c;
+  loadPendingMarksForDate();
+  renderAttendanceList();
+  renderReport();
+}
+
+function loadPendingMarksForDate(){
+  const date = dateInput.value;
+  const att = (attendanceCache[currentClass] && attendanceCache[currentClass][date]) || {};
+  pendingMarks = {};
+  Object.keys(att).forEach(function(k){ pendingMarks[k] = att[k]; });
+}
+
+document.getElementById('addStudentBtn').addEventListener('click', addStudent);
+document.getElementById('studentNameInput').addEventListener('keydown', function(e){
+  if(e.key === 'Enter') addStudent();
+});
+
+async function addStudent(){
+  const input = document.getElementById('studentNameInput');
+  const name = input.value.trim();
+  if(!name) return;
+  const id = 'st_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+  studentsCache[currentClass].push({id: id, name: name});
+  await persistStudents(currentClass);
+  input.value = '';
+  renderAttendanceList();
+  renderReport();
+}
+
+let pendingDeleteId = null;
+
+async function deleteStudent(id){
+  studentsCache[currentClass] = studentsCache[currentClass].filter(function(s){ return s.id !== id; });
+  await persistStudents(currentClass);
+  const att = attendanceCache[currentClass] || {};
+  Object.keys(att).forEach(function(date){ delete att[date][id]; });
+  await persistAttendance(currentClass);
+  delete pendingMarks[id];
+  pendingDeleteId = null;
+  renderAttendanceList();
+  renderReport();
+  renderMonthlySummary();
+}
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderAttendanceList(){
+  const students = studentsCache[currentClass] || [];
+  const listDiv = document.getElementById('studentListForAttendance');
+  const noMsg = document.getElementById('noStudentsMsg');
+  listDiv.innerHTML = '';
+
+  if(students.length === 0){
+    noMsg.style.display = 'block';
+    return;
+  }
+  noMsg.style.display = 'none';
+
+  students.forEach(function(s){
+    const mark = pendingMarks[s.id];
+    const row = document.createElement('div');
+    row.className = 'student-row';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 's-name';
+    nameSpan.textContent = s.name;
+
+    const toggleGroup = document.createElement('div');
+    toggleGroup.className = 'toggle-group';
+
+    const presentBtn = document.createElement('button');
+    presentBtn.type = 'button';
+    presentBtn.className = 'toggle-btn' + (mark === 'P' ? ' present-active' : '');
+    presentBtn.textContent = 'Present';
+    presentBtn.dataset.id = s.id;
+    presentBtn.dataset.val = 'P';
+
+    const absentBtn = document.createElement('button');
+    absentBtn.type = 'button';
+    absentBtn.className = 'toggle-btn' + (mark === 'A' ? ' absent-active' : '');
+    absentBtn.textContent = 'Absent';
+    absentBtn.dataset.id = s.id;
+    absentBtn.dataset.val = 'A';
+
+    toggleGroup.appendChild(presentBtn);
+    toggleGroup.appendChild(absentBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'btn-del';
+    if(pendingDeleteId === s.id){
+      delBtn.textContent = 'पक्का?';
+      delBtn.style.color = '#fff';
+      delBtn.style.background = 'var(--absent)';
+      delBtn.style.borderRadius = '6px';
+      delBtn.style.fontSize = '12px';
+    }else{
+      delBtn.textContent = '✕';
+    }
+    delBtn.dataset.delId = s.id;
+
+    row.appendChild(nameSpan);
+    row.appendChild(toggleGroup);
+    row.appendChild(delBtn);
+    listDiv.appendChild(row);
+  });
+}
+
+// Event delegation: works even after list is rebuilt. Clicking Present/Absent saves immediately.
+document.getElementById('studentListForAttendance').addEventListener('click', async function(e){
+  const toggleBtn = e.target.closest('.toggle-btn');
+  if(toggleBtn){
+    const id = toggleBtn.dataset.id;
+    const val = toggleBtn.dataset.val;
+    pendingMarks[id] = (pendingMarks[id] === val) ? undefined : val;
+    if(pendingMarks[id] === undefined) delete pendingMarks[id];
+
+    // auto-save immediately
+    const date = dateInput.value;
+    if(!attendanceCache[currentClass]) attendanceCache[currentClass] = {};
+    const copy = {};
+    Object.keys(pendingMarks).forEach(function(k){ copy[k] = pendingMarks[k]; });
+    attendanceCache[currentClass][date] = copy;
+    await persistAttendance(currentClass);
+
+    renderAttendanceList();
+    renderReport();
+    renderMonthlySummary();
+    return;
+  }
+  const delBtn = e.target.closest('.btn-del');
+  if(delBtn){
+    const id = delBtn.dataset.delId;
+    if(pendingDeleteId === id){
+      deleteStudent(id);
+    }else{
+      pendingDeleteId = id;
+      renderAttendanceList();
+      setTimeout(function(){
+        if(pendingDeleteId === id){
+          pendingDeleteId = null;
+          renderAttendanceList();
+        }
+      }, 3000);
+    }
+  }
+});
+
+function renderReport(){
+  const students = studentsCache[currentClass] || [];
+  const att = attendanceCache[currentClass] || {};
+  const body = document.getElementById('reportBody');
+  const noMsg = document.getElementById('noReportMsg');
+  body.innerHTML = '';
+
+  if(students.length === 0){
+    noMsg.style.display = 'block';
+    return;
+  }
+  noMsg.style.display = 'none';
+
+  const selectedDate = dateInput.value;
+  const todaysMarks = att[selectedDate] || {};
+
+  let presentTodayCount = 0;
+  let totalDaySum = 0;
+
+  students.forEach(function(s){
+    const todayMark = todaysMarks[s.id];
+    if(todayMark === 'P') presentTodayCount++;
+
+    // count how many days present in the SELECTED report month
+    let monthlyPresent = 0;
+    Object.keys(att).forEach(function(d){
+      if(d.slice(0,7) !== selectedReportMonth) return;
+      if(att[d][s.id] === 'P') monthlyPresent++;
+    });
+    totalDaySum += monthlyPresent;
+
+    let presentDayHtml;
+    if(todayMark === 'P'){
+      presentDayHtml = '<span style="color:var(--present);font-weight:700;">Present</span>';
+    }else if(todayMark === 'A'){
+      presentDayHtml = '<span style="color:var(--absent);font-weight:700;">Absent</span>';
+    }else{
+      presentDayHtml = '<span style="color:var(--muted);">—</span>';
+    }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + escapeHtml(s.name) + '</td>' +
+      '<td>' + presentDayHtml + '</td>' +
+      '<td>' + monthlyPresent + '</td>';
+    body.appendChild(tr);
+  });
+
+  const totalTr = document.createElement('tr');
+  totalTr.className = 'total-row';
+  totalTr.innerHTML = '<td>Total</td><td>' + presentTodayCount + '</td><td>' + totalDaySum + '</td>';
+  body.appendChild(totalTr);
+}
+
+function renderMonthlySummary(){
+  document.getElementById('mdmMonthLabel').textContent = monthLabel(selectedReportMonth);
+  let group15 = 0;
+  let group68 = 0;
+  for(let c=1;c<=8;c++){
+    const att = attendanceCache[c] || {};
+    Object.keys(att).forEach(function(d){
+      if(d.slice(0,7) !== selectedReportMonth) return;
+      const dayRecord = att[d];
+      let presentCount = 0;
+      Object.keys(dayRecord).forEach(function(sid){
+        if(dayRecord[sid] === 'P') presentCount++;
+      });
+      if(c <= 5) group15 += presentCount;
+      else group68 += presentCount;
+    });
+  }
+  document.getElementById('group15Total').textContent = group15;
+  document.getElementById('group68Total').textContent = group68;
+}
+
+dateInput.addEventListener('change', function(){
+  updateDateDisplay();
+  loadPendingMarksForDate();
+  renderAttendanceList();
+  renderReport();
+});
+
+(async function init(){
+  buildTabs();
+  buildMonthDropdown();
+  await loadLocalFirst();
+  loadPendingMarksForDate();
+  renderAttendanceList();
+  renderReport();
+  renderMonthlySummary();
+  attachFirebaseListeners();
+})();
+
+})();
+</script>
+
+</body>
+</html>
