@@ -148,6 +148,7 @@
   }
   .group-box .g-label{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:6px;}
   .group-box .g-value{font-size:24px;font-weight:800;color:var(--primary);}
+  .rice-green{color:var(--present) !important;font-weight:800;}
 
   .empty{color:var(--muted);font-size:13.5px;text-align:center;padding:14px 0;}
   .status{font-size:12.5px;color:var(--present);text-align:center;margin-top:6px;min-height:16px;font-weight:600;}
@@ -157,7 +158,7 @@
 <body>
 
 <header>
-  <h1>बच्चों की उपस्थिति</h1>
+  <h1>👦👧 बच्चों की उपस्थिति</h1>
 </header>
 
 <div class="class-tabs" id="classTabs"></div>
@@ -194,6 +195,33 @@
       <tbody id="reportBody"></tbody>
     </table>
     <div class="empty" id="noReportMsg" style="display:none;">अभी कोई डेटा नहीं है</div>
+  </div>
+
+  <div class="card">
+    <h2>🍚 MDM Report — आज (<span id="todayMdmDate"></span>)</h2>
+    <div class="group-summary">
+      <div class="group-box">
+        <div class="g-label">Class 1 to 5</div>
+        <div class="g-value" id="todayGroup15Count">0</div>
+      </div>
+      <div class="group-box">
+        <div class="g-label">Class 6 to 8</div>
+        <div class="g-value" id="todayGroup68Count">0</div>
+      </div>
+    </div>
+    <div class="group-summary" style="margin-top:10px;">
+      <div class="group-box">
+        <div class="g-label">चावल</div>
+        <div class="g-value rice-green" id="todayRice15" style="font-size:15px;">0 g</div>
+      </div>
+      <div class="group-box">
+        <div class="g-label">चावल</div>
+        <div class="g-value rice-green" id="todayRice68" style="font-size:15px;">0 g</div>
+      </div>
+    </div>
+    <div class="summary-total">
+      <span class="rice-green" id="todayRiceTotal" style="font-size:16px;"></span>
+    </div>
   </div>
 
   <div class="card">
@@ -279,6 +307,7 @@ document.getElementById('reportMonthSelect').addEventListener('change', function
   selectedReportMonth = e.target.value;
   renderReport();
   renderMonthlySummary();
+  renderTodayMDM();
 });
 
 function toDDMMYY(isoDate){
@@ -348,6 +377,7 @@ function attachFirebaseListeners(){
         if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
         renderReport();
         renderMonthlySummary();
+        renderTodayMDM();
       }, function(){ showOfflineWarning(); });
 
       window.fbOnValue(window.fbRef(window.fbDb, attendancePath(c)), function(snapshot){
@@ -358,6 +388,7 @@ function attachFirebaseListeners(){
         if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
         renderReport();
         renderMonthlySummary();
+        renderTodayMDM();
       }, function(){ showOfflineWarning(); });
     })(c);
   }
@@ -457,6 +488,7 @@ async function deleteStudent(id){
   renderAttendanceList();
   renderReport();
   renderMonthlySummary();
+  renderTodayMDM();
 }
 
 function escapeHtml(str){
@@ -510,7 +542,7 @@ function renderAttendanceList(){
     delBtn.type = 'button';
     delBtn.className = 'btn-del';
     if(pendingDeleteId === s.id){
-      delBtn.textContent = 'पक्का?';
+      delBtn.textContent = 'Delete';
       delBtn.style.color = '#fff';
       delBtn.style.background = 'var(--absent)';
       delBtn.style.borderRadius = '6px';
@@ -547,6 +579,7 @@ document.getElementById('studentListForAttendance').addEventListener('click', as
     renderAttendanceList();
     renderReport();
     renderMonthlySummary();
+    renderTodayMDM();
     return;
   }
   const delBtn = e.target.closest('.btn-del');
@@ -620,6 +653,52 @@ function renderReport(){
   body.appendChild(totalTr);
 }
 
+function formatGramsSimple(g){
+  if(g >= 1000){
+    return (g / 1000).toFixed(3) + ' Kg';
+  }
+  return g + ' g';
+}
+
+function formatRiceTotal(g){
+  if(g >= 1000){
+    const kg = Math.floor(g / 1000);
+    const rem = g % 1000;
+    const kgDecimal = (g / 1000).toFixed(3);
+    let hindiPart = kg + ' किलो';
+    if(rem > 0) hindiPart += ' ' + rem + ' ग्राम';
+    return 'कुल चावल - ' + kgDecimal + ' Kg (' + hindiPart + ')';
+  }
+  return 'कुल चावल - ' + g + ' g';
+}
+
+function renderTodayMDM(){
+  const date = dateInput.value;
+  document.getElementById('todayMdmDate').textContent = toDDMMYY(date);
+
+  let group15 = 0;
+  let group68 = 0;
+  for(let c=1;c<=8;c++){
+    const dayRecord = (attendanceCache[c] && attendanceCache[c][date]) || {};
+    let presentCount = 0;
+    Object.keys(dayRecord).forEach(function(sid){
+      if(dayRecord[sid] === 'P') presentCount++;
+    });
+    if(c <= 5) group15 += presentCount;
+    else group68 += presentCount;
+  }
+
+  const rice15 = group15 * 100;   // 100g per child, class 1-5
+  const rice68 = group68 * 150;   // 150g per child, class 6-8
+  const totalRice = rice15 + rice68;
+
+  document.getElementById('todayGroup15Count').textContent = group15;
+  document.getElementById('todayGroup68Count').textContent = group68;
+  document.getElementById('todayRice15').textContent = formatGramsSimple(rice15);
+  document.getElementById('todayRice68').textContent = formatGramsSimple(rice68);
+  document.getElementById('todayRiceTotal').textContent = formatRiceTotal(totalRice);
+}
+
 function renderMonthlySummary(){
   document.getElementById('mdmMonthLabel').textContent = monthLabel(selectedReportMonth);
   let group15 = 0;
@@ -646,6 +725,7 @@ dateInput.addEventListener('change', function(){
   loadPendingMarksForDate();
   renderAttendanceList();
   renderReport();
+  renderTodayMDM();
 });
 
 (async function init(){
@@ -656,6 +736,7 @@ dateInput.addEventListener('change', function(){
   renderAttendanceList();
   renderReport();
   renderMonthlySummary();
+  renderTodayMDM();
   attachFirebaseListeners();
 })();
 
