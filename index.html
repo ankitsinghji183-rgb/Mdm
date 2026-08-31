@@ -179,6 +179,21 @@
     <div class="row">
       <input type="date" id="attendanceDate" lang="en-GB">
     </div>
+    <div class="row" style="background:#fff7ed;padding:8px 10px;border-radius:8px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#b45309;cursor:pointer;">
+        <input type="checkbox" id="mdmSkipCheckbox" style="width:18px;height:18px;">
+        आज भोजन (MDM) नहीं बना
+      </label>
+    </div>
+    <div class="row" id="mealTypeRow" style="background:#f0fdf4;padding:8px 10px;border-radius:8px;gap:16px;">
+      <span style="font-size:13px;font-weight:600;color:var(--muted);">आज क्या बना:</span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13.5px;font-weight:600;cursor:pointer;">
+        <input type="radio" name="mdmMealType" value="sabzi" id="mealTypeSabzi"> 🥦 सब्ज़ी
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13.5px;font-weight:600;cursor:pointer;">
+        <input type="radio" name="mdmMealType" value="dal" id="mealTypeDal"> 🌾 दाल
+      </label>
+    </div>
     <div id="studentListForAttendance"></div>
     <div class="empty" id="noStudentsMsg" style="display:none;">पहले इस कक्षा में बच्चे जोड़ें</div>
   </div>
@@ -201,11 +216,11 @@
     <h2>🍚 MDM Report — आज (<span id="todayMdmDate"></span>)</h2>
     <div class="group-summary">
       <div class="group-box">
-        <div class="g-label">Class 1 to 5</div>
+        <div class="g-label">Class 1 to 5 उपस्थित</div>
         <div class="g-value" id="todayGroup15Count">0</div>
       </div>
       <div class="group-box">
-        <div class="g-label">Class 6 to 8</div>
+        <div class="g-label">Class 6 to 8 उपस्थित</div>
         <div class="g-value" id="todayGroup68Count">0</div>
       </div>
     </div>
@@ -237,6 +252,35 @@
         <div class="g-value" id="group68Total">0</div>
       </div>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>🍛 Monthly भोजन सामग्री (<span id="monthlyIngredientLabel"></span>)</h2>
+    <table>
+      <thead>
+        <tr><th></th><th>Class 1 to 5</th><th>Class 6 to 8</th><th>Total</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align:left;">चावल</td>
+          <td id="mRice15"></td>
+          <td id="mRice68"></td>
+          <td class="rice-green" id="mRiceTotal"></td>
+        </tr>
+        <tr>
+          <td style="text-align:left;">दाल</td>
+          <td id="mDal15"></td>
+          <td id="mDal68"></td>
+          <td class="rice-green" id="mDalTotal"></td>
+        </tr>
+        <tr>
+          <td style="text-align:left;">सब्ज़ी</td>
+          <td id="mSabzi15"></td>
+          <td id="mSabzi68"></td>
+          <td class="rice-green" id="mSabziTotal"></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
 </div>
@@ -272,6 +316,8 @@ let currentClass = 1;
 let studentsCache = {};   // {classNum: [{id, name}]}
 let attendanceCache = {}; // {classNum: {dateStr: {studentId: 'P'|'A'}}}
 let pendingMarks = {};    // studentId -> 'P'|'A' for currently selected date
+let mdmSkipCache = {};    // {dateStr: true} - dates when no food was cooked (school-wide)
+let mdmMealTypeCache = {}; // {dateStr: 'sabzi'|'dal'} - which one was cooked that day (school-wide)
 
 const todayStr = new Date().toISOString().split('T')[0];
 const currentMonthPrefix = todayStr.slice(0, 7); // "YYYY-MM"
@@ -307,6 +353,7 @@ document.getElementById('reportMonthSelect').addEventListener('change', function
   selectedReportMonth = e.target.value;
   renderReport();
   renderMonthlySummary();
+  renderMonthlyMDMIngredients();
   renderTodayMDM();
 });
 
@@ -328,6 +375,10 @@ function studentsKey(c){ return 'students-class-' + c; }
 function attendanceKey(c){ return 'attendance-class-' + c; }
 function studentsPath(c){ return 'students/class' + c; }
 function attendancePath(c){ return 'attendance/class' + c; }
+const MDM_SKIP_KEY = 'mdm-skip-dates';
+const MDM_SKIP_PATH = 'mdmSkip';
+const MDM_MEALTYPE_KEY = 'mdm-meal-type';
+const MDM_MEALTYPE_PATH = 'mdmMealType';
 
 // ---- local backup (always works, even fully offline) ----
 async function localGet(key){
@@ -361,6 +412,10 @@ async function loadLocalFirst(){
     const aRaw = await localGet(attendanceKey(c));
     try{ attendanceCache[c] = aRaw ? JSON.parse(aRaw) : {}; }catch(e){ attendanceCache[c] = {}; }
   }
+  const skipRaw = await localGet(MDM_SKIP_KEY);
+  try{ mdmSkipCache = skipRaw ? JSON.parse(skipRaw) : {}; }catch(e){ mdmSkipCache = {}; }
+  const mealRaw = await localGet(MDM_MEALTYPE_KEY);
+  try{ mdmMealTypeCache = mealRaw ? JSON.parse(mealRaw) : {}; }catch(e){ mdmMealTypeCache = {}; }
 }
 
 // ---- 2) attach live Firebase listeners: whenever server data changes (including
@@ -377,6 +432,7 @@ function attachFirebaseListeners(){
         if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
         renderReport();
         renderMonthlySummary();
+        renderMonthlyMDMIngredients();
         renderTodayMDM();
       }, function(){ showOfflineWarning(); });
 
@@ -388,10 +444,33 @@ function attachFirebaseListeners(){
         if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
         renderReport();
         renderMonthlySummary();
+        renderMonthlyMDMIngredients();
         renderTodayMDM();
       }, function(){ showOfflineWarning(); });
     })(c);
   }
+
+  window.fbOnValue(window.fbRef(window.fbDb, MDM_SKIP_PATH), function(snapshot){
+    const val = snapshot.val() || {};
+    mdmSkipCache = val;
+    localSet(MDM_SKIP_KEY, JSON.stringify(val));
+    hideOfflineWarning();
+    const cb = document.getElementById('mdmSkipCheckbox');
+    if(cb) cb.checked = !!mdmSkipCache[dateInput.value];
+    renderMonthlySummary();
+    renderMonthlyMDMIngredients();
+    renderTodayMDM();
+  }, function(){ showOfflineWarning(); });
+
+  window.fbOnValue(window.fbRef(window.fbDb, MDM_MEALTYPE_PATH), function(snapshot){
+    const val = snapshot.val() || {};
+    mdmMealTypeCache = val;
+    localSet(MDM_MEALTYPE_KEY, JSON.stringify(val));
+    hideOfflineWarning();
+    setMealTypeRadio(mdmMealTypeCache[dateInput.value] || 'sabzi');
+    renderMonthlyMDMIngredients();
+    renderTodayMDM();
+  }, function(){ showOfflineWarning(); });
 }
 
 // ---- 3) every write: save locally immediately, then push to Firebase ----
@@ -413,6 +492,24 @@ async function persistAttendance(c){
     showOfflineWarning();
   }
 }
+async function persistMdmSkip(){
+  await localSet(MDM_SKIP_KEY, JSON.stringify(mdmSkipCache));
+  try{
+    await window.fbSet(window.fbRef(window.fbDb, MDM_SKIP_PATH), mdmSkipCache);
+    hideOfflineWarning();
+  }catch(e){
+    showOfflineWarning();
+  }
+}
+async function persistMdmMealType(){
+  await localSet(MDM_MEALTYPE_KEY, JSON.stringify(mdmMealTypeCache));
+  try{
+    await window.fbSet(window.fbRef(window.fbDb, MDM_MEALTYPE_PATH), mdmMealTypeCache);
+    hideOfflineWarning();
+  }catch(e){
+    showOfflineWarning();
+  }
+}
 
 // ---- 4) as soon as internet comes back, push whatever we have locally to Firebase ----
 window.addEventListener('online', function(){
@@ -420,6 +517,8 @@ window.addEventListener('online', function(){
     persistStudents(c);
     persistAttendance(c);
   }
+  persistMdmSkip();
+  persistMdmMealType();
 });
 
 function buildTabs(){
@@ -488,6 +587,7 @@ async function deleteStudent(id){
   renderAttendanceList();
   renderReport();
   renderMonthlySummary();
+  renderMonthlyMDMIngredients();
   renderTodayMDM();
 }
 
@@ -542,7 +642,7 @@ function renderAttendanceList(){
     delBtn.type = 'button';
     delBtn.className = 'btn-del';
     if(pendingDeleteId === s.id){
-      delBtn.textContent = 'Delete';
+      delBtn.textContent = 'पक्का?';
       delBtn.style.color = '#fff';
       delBtn.style.background = 'var(--absent)';
       delBtn.style.borderRadius = '6px';
@@ -579,6 +679,7 @@ document.getElementById('studentListForAttendance').addEventListener('click', as
     renderAttendanceList();
     renderReport();
     renderMonthlySummary();
+    renderMonthlyMDMIngredients();
     renderTodayMDM();
     return;
   }
@@ -675,6 +776,8 @@ function formatRiceTotal(g){
 function renderTodayMDM(){
   const date = dateInput.value;
   document.getElementById('todayMdmDate').textContent = toDDMMYY(date);
+  const skipped = !!mdmSkipCache[date];
+  const mealType = mdmMealTypeCache[date] || 'sabzi';
 
   let group15 = 0;
   let group68 = 0;
@@ -688,15 +791,22 @@ function renderTodayMDM(){
     else group68 += presentCount;
   }
 
-  const rice15 = group15 * 100;   // 100g per child, class 1-5
-  const rice68 = group68 * 150;   // 150g per child, class 6-8
+  const rice15 = skipped ? 0 : group15 * 100;   // 100g per child, class 1-5
+  const rice68 = skipped ? 0 : group68 * 150;   // 150g per child, class 6-8
   const totalRice = rice15 + rice68;
+
+  const dishQty15 = skipped ? 0 : group15 * (mealType === 'dal' ? QTY.dal15 : QTY.sabzi15);
+  const dishQty68 = skipped ? 0 : group68 * (mealType === 'dal' ? QTY.dal68 : QTY.sabzi68);
+  const dishTotal = dishQty15 + dishQty68;
+  const dishLabel = mealType === 'dal' ? 'दाल' : 'सब्ज़ी';
 
   document.getElementById('todayGroup15Count').textContent = group15;
   document.getElementById('todayGroup68Count').textContent = group68;
   document.getElementById('todayRice15').textContent = formatGramsSimple(rice15);
   document.getElementById('todayRice68').textContent = formatGramsSimple(rice68);
-  document.getElementById('todayRiceTotal').textContent = formatRiceTotal(totalRice);
+  document.getElementById('todayRiceTotal').textContent = skipped
+    ? 'आज भोजन नहीं बना — कुल चावल 0 g'
+    : formatRiceTotal(totalRice) + ' | आज ' + dishLabel + ' - ' + formatGramsSimple(dishTotal);
 }
 
 function renderMonthlySummary(){
@@ -707,6 +817,7 @@ function renderMonthlySummary(){
     const att = attendanceCache[c] || {};
     Object.keys(att).forEach(function(d){
       if(d.slice(0,7) !== selectedReportMonth) return;
+      if(mdmSkipCache[d]) return; // that day's food wasn't cooked - don't count it
       const dayRecord = att[d];
       let presentCount = 0;
       Object.keys(dayRecord).forEach(function(sid){
@@ -720,12 +831,90 @@ function renderMonthlySummary(){
   document.getElementById('group68Total').textContent = group68;
 }
 
+// per-student daily quantities (grams)
+const QTY = {
+  rice15: 100, rice68: 150,
+  dal15: 20,   dal68: 30,
+  sabzi15: 50, sabzi68: 75
+};
+
+function renderMonthlyMDMIngredients(){
+  document.getElementById('monthlyIngredientLabel').textContent = monthLabel(selectedReportMonth);
+
+  let rice15=0, rice68=0, dal15=0, dal68=0, sabzi15=0, sabzi68=0;
+  for(let c=1;c<=8;c++){
+    const att = attendanceCache[c] || {};
+    Object.keys(att).forEach(function(d){
+      if(d.slice(0,7) !== selectedReportMonth) return;
+      if(mdmSkipCache[d]) return; // no food cooked that day - excluded entirely
+      const dayRecord = att[d];
+      let presentCount = 0;
+      Object.keys(dayRecord).forEach(function(sid){
+        if(dayRecord[sid] === 'P') presentCount++;
+      });
+      const mealType = mdmMealTypeCache[d] || 'sabzi'; // that day's kitchen made either sabzi OR dal, never both
+      if(c <= 5){
+        rice15  += presentCount * QTY.rice15;
+        if(mealType === 'dal') dal15 += presentCount * QTY.dal15;
+        else sabzi15 += presentCount * QTY.sabzi15;
+      }else{
+        rice68  += presentCount * QTY.rice68;
+        if(mealType === 'dal') dal68 += presentCount * QTY.dal68;
+        else sabzi68 += presentCount * QTY.sabzi68;
+      }
+    });
+  }
+
+  document.getElementById('mRice15').textContent = formatGramsSimple(rice15);
+  document.getElementById('mRice68').textContent = formatGramsSimple(rice68);
+  document.getElementById('mRiceTotal').textContent = formatGramsSimple(rice15 + rice68);
+
+  document.getElementById('mDal15').textContent = formatGramsSimple(dal15);
+  document.getElementById('mDal68').textContent = formatGramsSimple(dal68);
+  document.getElementById('mDalTotal').textContent = formatGramsSimple(dal15 + dal68);
+
+  document.getElementById('mSabzi15').textContent = formatGramsSimple(sabzi15);
+  document.getElementById('mSabzi68').textContent = formatGramsSimple(sabzi68);
+  document.getElementById('mSabziTotal').textContent = formatGramsSimple(sabzi15 + sabzi68);
+}
+
+function setMealTypeRadio(val){
+  const sabziRadio = document.getElementById('mealTypeSabzi');
+  const dalRadio = document.getElementById('mealTypeDal');
+  if(sabziRadio) sabziRadio.checked = (val !== 'dal');
+  if(dalRadio) dalRadio.checked = (val === 'dal');
+}
+
 dateInput.addEventListener('change', function(){
   updateDateDisplay();
   loadPendingMarksForDate();
   renderAttendanceList();
   renderReport();
   renderTodayMDM();
+  document.getElementById('mdmSkipCheckbox').checked = !!mdmSkipCache[dateInput.value];
+  setMealTypeRadio(mdmMealTypeCache[dateInput.value] || 'sabzi');
+});
+
+document.getElementById('mdmSkipCheckbox').addEventListener('change', async function(e){
+  const date = dateInput.value;
+  if(e.target.checked){
+    mdmSkipCache[date] = true;
+  }else{
+    delete mdmSkipCache[date];
+  }
+  await persistMdmSkip();
+  renderTodayMDM();
+  renderMonthlySummary();
+  renderMonthlyMDMIngredients();
+});
+
+document.getElementById('mealTypeRow').addEventListener('change', async function(e){
+  if(e.target.name !== 'mdmMealType') return;
+  const date = dateInput.value;
+  mdmMealTypeCache[date] = e.target.value;
+  await persistMdmMealType();
+  renderTodayMDM();
+  renderMonthlyMDMIngredients();
 });
 
 (async function init(){
@@ -736,7 +925,10 @@ dateInput.addEventListener('change', function(){
   renderAttendanceList();
   renderReport();
   renderMonthlySummary();
+  renderMonthlyMDMIngredients();
   renderTodayMDM();
+  document.getElementById('mdmSkipCheckbox').checked = !!mdmSkipCache[dateInput.value];
+  setMealTypeRadio(mdmMealTypeCache[dateInput.value] || 'sabzi');
   attachFirebaseListeners();
 })();
 
