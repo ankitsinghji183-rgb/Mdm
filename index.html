@@ -138,7 +138,14 @@
   td:first-child, th:first-child{text-align:right;font-weight:500;}
   tr.total-row td{font-weight:700;color:var(--primary);border-top:2px solid var(--primary);border-bottom:none;}
 
+  .mini-table{flex:1;font-size:12px;border-collapse:collapse;}
+  .mini-table th{background:#eff6ff;color:var(--primary);font-size:11px;padding:5px 4px;text-align:center !important;font-weight:800 !important;}
+  .mini-table td{padding:5px 4px;text-align:center;border-bottom:1px solid var(--border);}
+  .mini-table tfoot td{font-weight:700;color:var(--primary);border-top:2px solid var(--primary);border-bottom:none;}
+  .kaksha-th{text-align:center !important;font-weight:800 !important;}
+
   .group-summary{display:flex;gap:10px;}
+  .summary-total{display:flex;background:#eff6ff;padding:12px;border-radius:10px;font-weight:700;color:var(--primary);font-size:14.5px;}
   .group-box{
     flex:1;
     text-align:center;
@@ -172,13 +179,6 @@
       <input type="text" id="studentNameInput" placeholder="बच्चे का नाम लिखें...">
       <button class="btn-add" id="addStudentBtn">जोड़ें</button>
     </div>
-  </div>
-
-  <div class="card">
-    <h2>📅 उपस्थिति दर्ज करें</h2>
-    <div class="row">
-      <input type="date" id="attendanceDate" lang="en-GB">
-    </div>
     <div class="row" style="background:#fff7ed;padding:8px 10px;border-radius:8px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#b45309;cursor:pointer;">
         <input type="checkbox" id="mdmSkipCheckbox" style="width:18px;height:18px;">
@@ -194,6 +194,20 @@
         <input type="radio" name="mdmMealType" value="dal" id="mealTypeDal"> 🌾 दाल
       </label>
     </div>
+    <div class="summary-total" style="display:flex;margin-top:10px;flex-direction:column;gap:6px;align-items:flex-start;">
+      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">Total उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayTotalAttValue">0</span></span>
+      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">PS उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayPsAttValue">0</span></span>
+      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">MS उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayMsAttValue">0</span></span>
+      <span class="rice-green" id="todayRiceTotal" style="font-size:15px;"></span>
+      <span class="rice-green" id="todayDishTotal" style="font-size:15px;"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📅 उपस्थिति दर्ज करें</h2>
+    <div class="row">
+      <input type="date" id="attendanceDate" lang="en-GB">
+    </div>
     <div id="studentListForAttendance"></div>
     <div class="empty" id="noStudentsMsg" style="display:none;">पहले इस कक्षा में बच्चे जोड़ें</div>
   </div>
@@ -205,7 +219,7 @@
     </div>
     <table id="reportTable">
       <thead>
-        <tr><th>Name</th><th id="presentDayHeader">Present Day</th><th>Total Day</th></tr>
+        <tr><th class="kaksha-th">नाम</th><th id="presentDayHeader">Present Day</th><th>माह में कुल उपस्थिति</th></tr>
       </thead>
       <tbody id="reportBody"></tbody>
     </table>
@@ -214,43 +228,64 @@
 
   <div class="card">
     <h2>🍚 MDM Report — आज (<span id="todayMdmDate"></span>)</h2>
-    <div class="group-summary">
-      <div class="group-box">
-        <div class="g-label">Class 1 to 5 उपस्थित</div>
-        <div class="g-value" id="todayGroup15Count">0</div>
-      </div>
-      <div class="group-box">
-        <div class="g-label">Class 6 to 8 उपस्थित</div>
-        <div class="g-value" id="todayGroup68Count">0</div>
-      </div>
+    <div style="font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:6px;">कक्षा-वार आज की उपस्थिति</div>
+    <div class="row" style="align-items:flex-start;gap:10px;">
+      <table class="mini-table">
+        <thead><tr><th class="kaksha-th">कक्षा</th><th>उपस्थिति</th></tr></thead>
+        <tbody id="todayPsRows"></tbody>
+        <tfoot><tr class="total-row"><td>Total</td><td id="todayPsTotal">0</td></tr></tfoot>
+      </table>
+      <table class="mini-table">
+        <thead><tr><th class="kaksha-th">कक्षा</th><th>उपस्थिति</th></tr></thead>
+        <tbody id="todayMsRows"></tbody>
+        <tfoot><tr class="total-row"><td>Total</td><td id="todayMsTotal">0</td></tr></tfoot>
+      </table>
     </div>
-    <div class="group-summary" style="margin-top:10px;">
-      <div class="group-box">
-        <div class="g-label">चावल</div>
-        <div class="g-value rice-green" id="todayRice15" style="font-size:15px;">0 g</div>
-      </div>
-      <div class="group-box">
-        <div class="g-label">चावल</div>
-        <div class="g-value rice-green" id="todayRice68" style="font-size:15px;">0 g</div>
-      </div>
+    <div class="summary-total" style="display:flex;gap:8px;margin-top:10px;">
+      <span class="rice-green">कक्षा 1 to 8 Total -</span>
+      <span style="color:var(--absent);font-weight:800;" id="todayGrandTotal">0</span>
     </div>
-    <div class="summary-total">
-      <span class="rice-green" id="todayRiceTotal" style="font-size:16px;"></span>
-    </div>
+
+    <div style="font-size:12.5px;color:var(--muted);font-weight:600;margin:14px 0 6px;">भोजन सामग्री (आज)</div>
+    <table>
+      <thead>
+        <tr><th class="kaksha-th">कक्षा</th><th>चावल</th><th id="todayDishHeader">दाल/सब्ज़ी</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="text-align:center;">PS</td>
+          <td id="todayRicePs"></td>
+          <td class="rice-green" id="todayDishPs"></td>
+        </tr>
+        <tr>
+          <td style="text-align:center;">MS</td>
+          <td id="todayRiceMs"></td>
+          <td class="rice-green" id="todayDishMs"></td>
+        </tr>
+        <tr class="total-row">
+          <td style="text-align:center;">Total</td>
+          <td id="todayRiceGrand"></td>
+          <td class="rice-green" id="todayDishGrand"></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="card">
     <h2>🗓️ MDM Report</h2>
     <div class="empty" id="mdmMonthLabel" style="padding:0 0 8px;color:var(--muted);"></div>
-    <div class="group-summary">
-      <div class="group-box">
-        <div class="g-label">Class 1 to 5</div>
-        <div class="g-value" id="group15Total">0</div>
-      </div>
-      <div class="group-box">
-        <div class="g-label">Class 6 to 8</div>
-        <div class="g-value" id="group68Total">0</div>
-      </div>
+    <div style="margin-bottom:6px;"></div>
+    <div class="row" style="align-items:flex-start;gap:10px;">
+      <table class="mini-table">
+        <thead><tr><th class="kaksha-th">कक्षा</th><th>उपस्थिति</th></tr></thead>
+        <tbody id="monthPsRows"></tbody>
+        <tfoot><tr class="total-row"><td>Total</td><td id="monthPsTotal">0</td></tr></tfoot>
+      </table>
+      <table class="mini-table">
+        <thead><tr><th class="kaksha-th">कक्षा</th><th>उपस्थिति</th></tr></thead>
+        <tbody id="monthMsRows"></tbody>
+        <tfoot><tr class="total-row"><td>Total</td><td id="monthMsTotal">0</td></tr></tfoot>
+      </table>
     </div>
   </div>
 
@@ -258,26 +293,26 @@
     <h2>🍛 Monthly भोजन सामग्री (<span id="monthlyIngredientLabel"></span>)</h2>
     <table>
       <thead>
-        <tr><th></th><th>Class 1 to 5</th><th>Class 6 to 8</th><th>Total</th></tr>
+        <tr><th class="kaksha-th">कक्षा</th><th>चावल</th><th>दाल</th><th>सब्ज़ी</th></tr>
       </thead>
       <tbody>
         <tr>
-          <td style="text-align:left;">चावल</td>
-          <td id="mRice15"></td>
-          <td id="mRice68"></td>
-          <td class="rice-green" id="mRiceTotal"></td>
+          <td style="text-align:center;">PS</td>
+          <td id="mRicePs"></td>
+          <td class="rice-green" id="mDalPs"></td>
+          <td class="rice-green" id="mSabziPs"></td>
         </tr>
         <tr>
-          <td style="text-align:left;">दाल</td>
-          <td id="mDal15"></td>
-          <td id="mDal68"></td>
-          <td class="rice-green" id="mDalTotal"></td>
+          <td style="text-align:center;">MS</td>
+          <td id="mRiceMs"></td>
+          <td class="rice-green" id="mDalMs"></td>
+          <td class="rice-green" id="mSabziMs"></td>
         </tr>
-        <tr>
-          <td style="text-align:left;">सब्ज़ी</td>
-          <td id="mSabzi15"></td>
-          <td id="mSabzi68"></td>
-          <td class="rice-green" id="mSabziTotal"></td>
+        <tr class="total-row">
+          <td style="text-align:center;">Total</td>
+          <td id="mRiceGrand"></td>
+          <td class="rice-green" id="mDalGrand"></td>
+          <td class="rice-green" id="mSabziGrand"></td>
         </tr>
       </tbody>
     </table>
@@ -642,7 +677,7 @@ function renderAttendanceList(){
     delBtn.type = 'button';
     delBtn.className = 'btn-del';
     if(pendingDeleteId === s.id){
-      delBtn.textContent = 'पक्का?';
+      delBtn.textContent = 'Delete';
       delBtn.style.color = '#fff';
       delBtn.style.background = 'var(--absent)';
       delBtn.style.borderRadius = '6px';
@@ -773,70 +808,100 @@ function formatRiceTotal(g){
   return 'कुल चावल - ' + g + ' g';
 }
 
-function renderTodayMDM(){
-  const date = dateInput.value;
-  document.getElementById('todayMdmDate').textContent = toDDMMYY(date);
-  const skipped = !!mdmSkipCache[date];
-  const mealType = mdmMealTypeCache[date] || 'sabzi';
-
-  let group15 = 0;
-  let group68 = 0;
-  for(let c=1;c<=8;c++){
-    const dayRecord = (attendanceCache[c] && attendanceCache[c][date]) || {};
-    let presentCount = 0;
-    Object.keys(dayRecord).forEach(function(sid){
-      if(dayRecord[sid] === 'P') presentCount++;
-    });
-    if(c <= 5) group15 += presentCount;
-    else group68 += presentCount;
-  }
-
-  const rice15 = skipped ? 0 : group15 * 100;   // 100g per child, class 1-5
-  const rice68 = skipped ? 0 : group68 * 150;   // 150g per child, class 6-8
-  const totalRice = rice15 + rice68;
-
-  const dishQty15 = skipped ? 0 : group15 * (mealType === 'dal' ? QTY.dal15 : QTY.sabzi15);
-  const dishQty68 = skipped ? 0 : group68 * (mealType === 'dal' ? QTY.dal68 : QTY.sabzi68);
-  const dishTotal = dishQty15 + dishQty68;
-  const dishLabel = mealType === 'dal' ? 'दाल' : 'सब्ज़ी';
-
-  document.getElementById('todayGroup15Count').textContent = group15;
-  document.getElementById('todayGroup68Count').textContent = group68;
-  document.getElementById('todayRice15').textContent = formatGramsSimple(rice15);
-  document.getElementById('todayRice68').textContent = formatGramsSimple(rice68);
-  document.getElementById('todayRiceTotal').textContent = skipped
-    ? 'आज भोजन नहीं बना — कुल चावल 0 g'
-    : formatRiceTotal(totalRice) + ' | आज ' + dishLabel + ' - ' + formatGramsSimple(dishTotal);
-}
-
-function renderMonthlySummary(){
-  document.getElementById('mdmMonthLabel').textContent = monthLabel(selectedReportMonth);
-  let group15 = 0;
-  let group68 = 0;
-  for(let c=1;c<=8;c++){
-    const att = attendanceCache[c] || {};
-    Object.keys(att).forEach(function(d){
-      if(d.slice(0,7) !== selectedReportMonth) return;
-      if(mdmSkipCache[d]) return; // that day's food wasn't cooked - don't count it
-      const dayRecord = att[d];
-      let presentCount = 0;
-      Object.keys(dayRecord).forEach(function(sid){
-        if(dayRecord[sid] === 'P') presentCount++;
-      });
-      if(c <= 5) group15 += presentCount;
-      else group68 += presentCount;
-    });
-  }
-  document.getElementById('group15Total').textContent = group15;
-  document.getElementById('group68Total').textContent = group68;
-}
-
 // per-student daily quantities (grams)
 const QTY = {
   rice15: 100, rice68: 150,
   dal15: 20,   dal68: 30,
   sabzi15: 50, sabzi68: 75
 };
+
+function buildClassRows(tbodyId, classFrom, classTo, getCount){
+  const tbody = document.getElementById(tbodyId);
+  tbody.innerHTML = '';
+  let total = 0;
+  for(let c=classFrom; c<=classTo; c++){
+    const count = getCount(c);
+    total += count;
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + c + '</td><td>' + count + '</td>';
+    tbody.appendChild(tr);
+  }
+  return total;
+}
+
+function renderTodayMDM(){
+  const date = dateInput.value;
+  document.getElementById('todayMdmDate').textContent = toDDMMYY(date);
+  const skipped = !!mdmSkipCache[date];
+  const mealType = mdmMealTypeCache[date] || 'sabzi';
+  const dishLabel = mealType === 'dal' ? 'दाल' : 'सब्ज़ी';
+
+  function countForClass(c){
+    const dayRecord = (attendanceCache[c] && attendanceCache[c][date]) || {};
+    let presentCount = 0;
+    Object.keys(dayRecord).forEach(function(sid){
+      if(dayRecord[sid] === 'P') presentCount++;
+    });
+    return presentCount;
+  }
+
+  const group15 = buildClassRows('todayPsRows', 1, 5, countForClass);
+  const group68 = buildClassRows('todayMsRows', 6, 8, countForClass);
+  document.getElementById('todayPsTotal').textContent = group15;
+  document.getElementById('todayMsTotal').textContent = group68;
+  document.getElementById('todayGrandTotal').textContent = group15 + group68;
+
+  const rice15 = skipped ? 0 : group15 * QTY.rice15;
+  const rice68 = skipped ? 0 : group68 * QTY.rice68;
+  const riceTotal = rice15 + rice68;
+
+  const dish15 = skipped ? 0 : group15 * (mealType === 'dal' ? QTY.dal15 : QTY.sabzi15);
+  const dish68 = skipped ? 0 : group68 * (mealType === 'dal' ? QTY.dal68 : QTY.sabzi68);
+  const dishTotal = dish15 + dish68;
+
+  document.getElementById('todayDishHeader').textContent = skipped ? 'दाल/सब्ज़ी' : dishLabel;
+  document.getElementById('todayRicePs').textContent = formatGramsSimple(rice15);
+  document.getElementById('todayRiceMs').textContent = formatGramsSimple(rice68);
+  document.getElementById('todayRiceGrand').textContent = formatGramsSimple(riceTotal);
+  document.getElementById('todayDishPs').textContent = formatGramsSimple(dish15);
+  document.getElementById('todayDishMs').textContent = formatGramsSimple(dish68);
+  document.getElementById('todayDishGrand').textContent = formatGramsSimple(dishTotal);
+
+  document.getElementById('todayTotalAttValue').textContent = group15 + group68;
+  document.getElementById('todayPsAttValue').textContent = group15;
+  document.getElementById('todayMsAttValue').textContent = group68;
+
+  if(skipped){
+    document.getElementById('todayRiceTotal').textContent = 'आज भोजन नहीं बना — कुल चावल 0 g';
+    document.getElementById('todayDishTotal').textContent = '';
+  }else{
+    document.getElementById('todayRiceTotal').textContent = formatRiceTotal(riceTotal);
+    document.getElementById('todayDishTotal').textContent = 'आज ' + dishLabel + ' - ' + formatGramsSimple(dishTotal);
+  }
+}
+
+function renderMonthlySummary(){
+  document.getElementById('mdmMonthLabel').textContent = monthLabel(selectedReportMonth);
+
+  function monthlyCountForClass(c){
+    const att = attendanceCache[c] || {};
+    let presentCount = 0;
+    Object.keys(att).forEach(function(d){
+      if(d.slice(0,7) !== selectedReportMonth) return;
+      if(mdmSkipCache[d]) return; // that day's food wasn't cooked - don't count it
+      const dayRecord = att[d];
+      Object.keys(dayRecord).forEach(function(sid){
+        if(dayRecord[sid] === 'P') presentCount++;
+      });
+    });
+    return presentCount;
+  }
+
+  const group15 = buildClassRows('monthPsRows', 1, 5, monthlyCountForClass);
+  const group68 = buildClassRows('monthMsRows', 6, 8, monthlyCountForClass);
+  document.getElementById('monthPsTotal').textContent = group15;
+  document.getElementById('monthMsTotal').textContent = group68;
+}
 
 function renderMonthlyMDMIngredients(){
   document.getElementById('monthlyIngredientLabel').textContent = monthLabel(selectedReportMonth);
@@ -854,28 +919,28 @@ function renderMonthlyMDMIngredients(){
       });
       const mealType = mdmMealTypeCache[d] || 'sabzi'; // that day's kitchen made either sabzi OR dal, never both
       if(c <= 5){
-        rice15  += presentCount * QTY.rice15;
+        rice15 += presentCount * QTY.rice15;
         if(mealType === 'dal') dal15 += presentCount * QTY.dal15;
         else sabzi15 += presentCount * QTY.sabzi15;
       }else{
-        rice68  += presentCount * QTY.rice68;
+        rice68 += presentCount * QTY.rice68;
         if(mealType === 'dal') dal68 += presentCount * QTY.dal68;
         else sabzi68 += presentCount * QTY.sabzi68;
       }
     });
   }
 
-  document.getElementById('mRice15').textContent = formatGramsSimple(rice15);
-  document.getElementById('mRice68').textContent = formatGramsSimple(rice68);
-  document.getElementById('mRiceTotal').textContent = formatGramsSimple(rice15 + rice68);
+  document.getElementById('mRicePs').textContent = formatGramsSimple(rice15);
+  document.getElementById('mRiceMs').textContent = formatGramsSimple(rice68);
+  document.getElementById('mRiceGrand').textContent = formatGramsSimple(rice15 + rice68);
 
-  document.getElementById('mDal15').textContent = formatGramsSimple(dal15);
-  document.getElementById('mDal68').textContent = formatGramsSimple(dal68);
-  document.getElementById('mDalTotal').textContent = formatGramsSimple(dal15 + dal68);
+  document.getElementById('mDalPs').textContent = formatGramsSimple(dal15);
+  document.getElementById('mDalMs').textContent = formatGramsSimple(dal68);
+  document.getElementById('mDalGrand').textContent = formatGramsSimple(dal15 + dal68);
 
-  document.getElementById('mSabzi15').textContent = formatGramsSimple(sabzi15);
-  document.getElementById('mSabzi68').textContent = formatGramsSimple(sabzi68);
-  document.getElementById('mSabziTotal').textContent = formatGramsSimple(sabzi15 + sabzi68);
+  document.getElementById('mSabziPs').textContent = formatGramsSimple(sabzi15);
+  document.getElementById('mSabziMs').textContent = formatGramsSimple(sabzi68);
+  document.getElementById('mSabziGrand').textContent = formatGramsSimple(sabzi15 + sabzi68);
 }
 
 function setMealTypeRadio(val){
@@ -884,6 +949,7 @@ function setMealTypeRadio(val){
   if(sabziRadio) sabziRadio.checked = (val !== 'dal');
   if(dalRadio) dalRadio.checked = (val === 'dal');
 }
+
 
 dateInput.addEventListener('change', function(){
   updateDateDisplay();
