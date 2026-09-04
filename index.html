@@ -143,6 +143,16 @@
   .mini-table td{padding:5px 4px;text-align:center;border-bottom:1px solid var(--border);}
   .mini-table tfoot td{font-weight:700;color:var(--primary);border-top:2px solid var(--primary);border-bottom:none;}
   .kaksha-th{text-align:center !important;font-weight:800 !important;}
+  .calendar-popup{position:absolute;top:100%;left:0;margin-top:4px;z-index:200;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.18);padding:10px;width:250px;}
+  .calendar-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:700;color:var(--primary);font-size:14px;}
+  .calendar-nav-btn{background:none;border:none;font-size:16px;cursor:pointer;padding:4px 10px;color:var(--primary);font-weight:800;}
+  .calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:12px;}
+  .calendar-weekday{font-weight:700;color:var(--muted);padding:4px 0;}
+  .calendar-day{padding:6px 0;border-radius:6px;cursor:pointer;}
+  .calendar-day:hover{background:#eff6ff;}
+  .calendar-day.selected{background:var(--primary);color:#fff;font-weight:700;}
+  .calendar-day.today:not(.selected){border:1.5px solid var(--primary);}
+  .calendar-day.empty{visibility:hidden;cursor:default;}
 
   .group-summary{display:flex;gap:10px;}
   .summary-total{display:flex;background:#eff6ff;padding:12px;border-radius:10px;font-weight:700;color:var(--primary);font-size:14.5px;}
@@ -204,26 +214,34 @@
   </div>
 
   <div class="card">
-    <h2>📅 उपस्थिति दर्ज करें</h2>
-    <div class="row">
-      <input type="date" id="attendanceDate" lang="en-GB">
+    <h2 style="display:flex;justify-content:space-between;align-items:center;">
+      <span>📅 उपस्थिति दर्ज करें</span>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" id="editModeGlobal" style="width:16px;height:16px;"> Edit
+      </label>
+    </h2>
+    <div class="row" style="position:relative;">
+      <input type="text" id="attendanceDateText" readonly placeholder="dd/mm/yy" style="cursor:pointer;background:#fff;">
+      <input type="hidden" id="attendanceDate">
+      <div id="calendarPopup" class="calendar-popup" style="display:none;"></div>
     </div>
-    <div id="studentListForAttendance"></div>
-    <div class="empty" id="noStudentsMsg" style="display:none;">पहले इस कक्षा में बच्चे जोड़ें</div>
-  </div>
-
-  <div class="card">
-    <h2>📊 उपस्थिति रिपोर्ट (कक्षा <span id="reportClassLabel">1</span>)</h2>
-    <div class="row">
-      <select id="reportMonthSelect"></select>
-    </div>
-    <table id="reportTable">
+    <div style="overflow-x:auto;">
+    <table id="attendanceListTable">
       <thead>
-        <tr><th class="kaksha-th">नाम</th><th id="presentDayHeader">Present Day</th><th>माह में कुल उपस्थिति</th></tr>
+        <tr><th class="kaksha-th">नाम</th><th>उपस्थिति</th><th>माह में कुल उपस्थिति</th><th></th></tr>
       </thead>
-      <tbody id="reportBody"></tbody>
+      <tbody id="studentListForAttendance"></tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td>Total</td>
+          <td id="attTodayPresentTotal">0</td>
+          <td id="attMonthGrandTotal">0</td>
+          <td></td>
+        </tr>
+      </tfoot>
     </table>
-    <div class="empty" id="noReportMsg" style="display:none;">अभी कोई डेटा नहीं है</div>
+    </div>
+    <div class="empty" id="noStudentsMsg" style="display:none;">पहले इस कक्षा में बच्चे जोड़ें</div>
   </div>
 
   <div class="card">
@@ -273,6 +291,9 @@
 
   <div class="card">
     <h2>🗓️ MDM Report</h2>
+    <div class="row">
+      <select id="reportMonthSelect"></select>
+    </div>
     <div class="empty" id="mdmMonthLabel" style="padding:0 0 8px;color:var(--muted);"></div>
     <div style="margin-bottom:6px;"></div>
     <div class="row" style="align-items:flex-start;gap:10px;">
@@ -318,6 +339,16 @@
     </table>
   </div>
 
+</div>
+
+<div id="deleteConfirmOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:#fff;border-radius:14px;padding:22px 20px;max-width:340px;width:100%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:20px;">क्या आप बच्चे का नाम डिलीट करना चाहते हैं?</div>
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button id="deleteConfirmYes" type="button" style="flex:1;background:var(--absent);color:#fff;padding:10px;border-radius:8px;font-weight:700;font-size:14px;">हाँ</button>
+      <button id="deleteConfirmNo" type="button" style="flex:1;background:var(--bg);color:var(--text);padding:10px;border-radius:8px;font-weight:700;font-size:14px;border:1px solid var(--border);">नहीं</button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -386,7 +417,7 @@ function buildMonthDropdown(){
 
 document.getElementById('reportMonthSelect').addEventListener('change', function(e){
   selectedReportMonth = e.target.value;
-  renderReport();
+  renderAttendanceList();
   renderMonthlySummary();
   renderMonthlyMDMIngredients();
   renderTodayMDM();
@@ -403,8 +434,84 @@ function toDDMMYY(isoDate){
 function updateDateDisplay(){
   const header = document.getElementById('presentDayHeader');
   if(header) header.textContent = toDDMMYY(dateInput.value);
+  const textBox = document.getElementById('attendanceDateText');
+  if(textBox) textBox.value = toDDMMYY(dateInput.value);
 }
 updateDateDisplay();
+
+// ---- custom dd/mm/yy calendar (native <input type=date> format is unreliable across phones) ----
+let calYear, calMonth;
+const WEEKDAYS_SHORT = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+function toISO(y, m, d){
+  return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+
+function initCalendarState(){
+  const base = dateInput.value ? new Date(dateInput.value + 'T00:00:00') : new Date();
+  calYear = base.getFullYear();
+  calMonth = base.getMonth();
+}
+
+function renderCalendarPopup(){
+  const popup = document.getElementById('calendarPopup');
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const selectedISO = dateInput.value;
+
+  let html = '<div class="calendar-header">' +
+    '<button type="button" class="calendar-nav-btn" id="calPrevBtn">‹</button>' +
+    '<span>' + MONTH_NAMES[calMonth] + ' ' + calYear + '</span>' +
+    '<button type="button" class="calendar-nav-btn" id="calNextBtn">›</button>' +
+    '</div><div class="calendar-grid">';
+  WEEKDAYS_SHORT.forEach(function(w){ html += '<div class="calendar-weekday">' + w + '</div>'; });
+  for(let i=0;i<firstDay;i++){ html += '<div class="calendar-day empty"></div>'; }
+  for(let day=1; day<=daysInMonth; day++){
+    const iso = toISO(calYear, calMonth, day);
+    let cls = 'calendar-day';
+    if(iso === selectedISO) cls += ' selected';
+    if(iso === todayStr) cls += ' today';
+    html += '<div class="' + cls + '" data-iso="' + iso + '">' + day + '</div>';
+  }
+  html += '</div>';
+  popup.innerHTML = html;
+
+  document.getElementById('calPrevBtn').addEventListener('click', function(e){
+    e.stopPropagation();
+    calMonth--; if(calMonth < 0){ calMonth = 11; calYear--; }
+    renderCalendarPopup();
+  });
+  document.getElementById('calNextBtn').addEventListener('click', function(e){
+    e.stopPropagation();
+    calMonth++; if(calMonth > 11){ calMonth = 0; calYear++; }
+    renderCalendarPopup();
+  });
+  popup.querySelectorAll('.calendar-day[data-iso]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      e.stopPropagation();
+      dateInput.value = el.dataset.iso;
+      popup.style.display = 'none';
+      dateInput.dispatchEvent(new Event('change'));
+    });
+  });
+}
+
+document.getElementById('attendanceDateText').addEventListener('click', function(e){
+  e.stopPropagation();
+  const popup = document.getElementById('calendarPopup');
+  if(popup.style.display === 'none' || !popup.style.display){
+    initCalendarState();
+    renderCalendarPopup();
+    popup.style.display = 'block';
+  }else{
+    popup.style.display = 'none';
+  }
+});
+
+document.addEventListener('click', function(){
+  const popup = document.getElementById('calendarPopup');
+  if(popup) popup.style.display = 'none';
+});
 
 function studentsKey(c){ return 'students-class-' + c; }
 function attendanceKey(c){ return 'attendance-class-' + c; }
@@ -465,7 +572,6 @@ function attachFirebaseListeners(){
         localSet(studentsKey(c), JSON.stringify(arr));
         hideOfflineWarning();
         if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
-        renderReport();
         renderMonthlySummary();
         renderMonthlyMDMIngredients();
         renderTodayMDM();
@@ -477,7 +583,6 @@ function attachFirebaseListeners(){
         localSet(attendanceKey(c), JSON.stringify(val));
         hideOfflineWarning();
         if(c === currentClass){ loadPendingMarksForDate(); renderAttendanceList(); }
-        renderReport();
         renderMonthlySummary();
         renderMonthlyMDMIngredients();
         renderTodayMDM();
@@ -579,10 +684,8 @@ async function switchClass(c){
   currentClass = c;
   buildTabs();
   document.getElementById('addClassLabel').textContent = c;
-  document.getElementById('reportClassLabel').textContent = c;
   loadPendingMarksForDate();
   renderAttendanceList();
-  renderReport();
 }
 
 function loadPendingMarksForDate(){
@@ -606,10 +709,7 @@ async function addStudent(){
   await persistStudents(currentClass);
   input.value = '';
   renderAttendanceList();
-  renderReport();
 }
-
-let pendingDeleteId = null;
 
 async function deleteStudent(id){
   studentsCache[currentClass] = studentsCache[currentClass].filter(function(s){ return s.id !== id; });
@@ -618,12 +718,16 @@ async function deleteStudent(id){
   Object.keys(att).forEach(function(date){ delete att[date][id]; });
   await persistAttendance(currentClass);
   delete pendingMarks[id];
-  pendingDeleteId = null;
   renderAttendanceList();
-  renderReport();
   renderMonthlySummary();
   renderMonthlyMDMIngredients();
   renderTodayMDM();
+}
+
+function pad2(n){
+  n = Number(n) || 0;
+  if(n === 0) return '0';
+  return n < 10 ? '0' + n : String(n);
 }
 
 function escapeHtml(str){
@@ -632,66 +736,85 @@ function escapeHtml(str){
   return div.innerHTML;
 }
 
+let editModeGlobal = false; // controls whether all delete (✕) buttons are shown
+
 function renderAttendanceList(){
   const students = studentsCache[currentClass] || [];
-  const listDiv = document.getElementById('studentListForAttendance');
+  const listBody = document.getElementById('studentListForAttendance');
   const noMsg = document.getElementById('noStudentsMsg');
-  listDiv.innerHTML = '';
+  const tableEl = document.getElementById('attendanceListTable');
+  listBody.innerHTML = '';
 
   if(students.length === 0){
     noMsg.style.display = 'block';
+    tableEl.style.display = 'none';
     return;
   }
   noMsg.style.display = 'none';
+  tableEl.style.display = '';
+
+  let todayPresentTotal = 0;
+  let monthGrandTotal = 0;
 
   students.forEach(function(s){
     const mark = pendingMarks[s.id];
-    const row = document.createElement('div');
-    row.className = 'student-row';
+    if(mark === 'P') todayPresentTotal++;
+    const monthlyCount = getMonthlyPresentCount(s.id);
+    monthGrandTotal += monthlyCount;
 
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 's-name';
-    nameSpan.textContent = s.name;
+    const tr = document.createElement('tr');
 
-    const toggleGroup = document.createElement('div');
-    toggleGroup.className = 'toggle-group';
+    const nameTd = document.createElement('td');
+    nameTd.style.textAlign = 'left';
+    nameTd.style.fontWeight = '600';
+    nameTd.style.whiteSpace = 'nowrap';
+    nameTd.textContent = s.name;
 
+    const presentTd = document.createElement('td');
     const presentBtn = document.createElement('button');
     presentBtn.type = 'button';
     presentBtn.className = 'toggle-btn' + (mark === 'P' ? ' present-active' : '');
     presentBtn.textContent = 'Present';
     presentBtn.dataset.id = s.id;
     presentBtn.dataset.val = 'P';
+    presentTd.appendChild(presentBtn);
 
-    const absentBtn = document.createElement('button');
-    absentBtn.type = 'button';
-    absentBtn.className = 'toggle-btn' + (mark === 'A' ? ' absent-active' : '');
-    absentBtn.textContent = 'Absent';
-    absentBtn.dataset.id = s.id;
-    absentBtn.dataset.val = 'A';
+    const monthTd = document.createElement('td');
+    monthTd.style.fontWeight = '700';
+    monthTd.style.color = '#111827';
+    monthTd.textContent = pad2(monthlyCount);
 
-    toggleGroup.appendChild(presentBtn);
-    toggleGroup.appendChild(absentBtn);
+    const delTd = document.createElement('td');
+    delTd.style.whiteSpace = 'nowrap';
 
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
     delBtn.className = 'btn-del';
-    if(pendingDeleteId === s.id){
-      delBtn.textContent = 'Delete';
-      delBtn.style.color = '#fff';
-      delBtn.style.background = 'var(--absent)';
-      delBtn.style.borderRadius = '6px';
-      delBtn.style.fontSize = '12px';
-    }else{
-      delBtn.textContent = '✕';
-    }
+    delBtn.textContent = '✕';
     delBtn.dataset.delId = s.id;
+    delBtn.style.display = editModeGlobal ? '' : 'none';
 
-    row.appendChild(nameSpan);
-    row.appendChild(toggleGroup);
-    row.appendChild(delBtn);
-    listDiv.appendChild(row);
+    delTd.appendChild(delBtn);
+
+    tr.appendChild(nameTd);
+    tr.appendChild(presentTd);
+    tr.appendChild(monthTd);
+    tr.appendChild(delTd);
+    listBody.appendChild(tr);
   });
+
+  document.getElementById('attTodayPresentTotal').textContent = pad2(todayPresentTotal);
+  document.getElementById('attMonthGrandTotal').textContent = pad2(monthGrandTotal);
+}
+
+function getMonthlyPresentCount(studentId){
+  const att = attendanceCache[currentClass] || {};
+  let count = 0;
+  Object.keys(att).forEach(function(d){
+    if(d.slice(0,7) !== selectedReportMonth) return;
+    if(att[d][studentId] === 'P') count++;
+  });
+  return count;
 }
 
 // Event delegation: works even after list is rebuilt. Clicking Present/Absent saves immediately.
@@ -712,7 +835,6 @@ document.getElementById('studentListForAttendance').addEventListener('click', as
     await persistAttendance(currentClass);
 
     renderAttendanceList();
-    renderReport();
     renderMonthlySummary();
     renderMonthlyMDMIngredients();
     renderTodayMDM();
@@ -720,74 +842,36 @@ document.getElementById('studentListForAttendance').addEventListener('click', as
   }
   const delBtn = e.target.closest('.btn-del');
   if(delBtn){
-    const id = delBtn.dataset.delId;
-    if(pendingDeleteId === id){
-      deleteStudent(id);
-    }else{
-      pendingDeleteId = id;
-      renderAttendanceList();
-      setTimeout(function(){
-        if(pendingDeleteId === id){
-          pendingDeleteId = null;
-          renderAttendanceList();
-        }
-      }, 3000);
-    }
+    showDeleteConfirm(delBtn.dataset.delId);
   }
 });
 
-function renderReport(){
-  const students = studentsCache[currentClass] || [];
-  const att = attendanceCache[currentClass] || {};
-  const body = document.getElementById('reportBody');
-  const noMsg = document.getElementById('noReportMsg');
-  body.innerHTML = '';
+document.getElementById('editModeGlobal').addEventListener('change', function(e){
+  editModeGlobal = e.target.checked;
+  renderAttendanceList();
+});
 
-  if(students.length === 0){
-    noMsg.style.display = 'block';
-    return;
-  }
-  noMsg.style.display = 'none';
+let deleteConfirmId = null;
 
-  const selectedDate = dateInput.value;
-  const todaysMarks = att[selectedDate] || {};
-
-  let presentTodayCount = 0;
-  let totalDaySum = 0;
-
-  students.forEach(function(s){
-    const todayMark = todaysMarks[s.id];
-    if(todayMark === 'P') presentTodayCount++;
-
-    // count how many days present in the SELECTED report month
-    let monthlyPresent = 0;
-    Object.keys(att).forEach(function(d){
-      if(d.slice(0,7) !== selectedReportMonth) return;
-      if(att[d][s.id] === 'P') monthlyPresent++;
-    });
-    totalDaySum += monthlyPresent;
-
-    let presentDayHtml;
-    if(todayMark === 'P'){
-      presentDayHtml = '<span style="color:var(--present);font-weight:700;">Present</span>';
-    }else if(todayMark === 'A'){
-      presentDayHtml = '<span style="color:var(--absent);font-weight:700;">Absent</span>';
-    }else{
-      presentDayHtml = '<span style="color:var(--muted);">—</span>';
-    }
-
-    const tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + escapeHtml(s.name) + '</td>' +
-      '<td>' + presentDayHtml + '</td>' +
-      '<td>' + monthlyPresent + '</td>';
-    body.appendChild(tr);
-  });
-
-  const totalTr = document.createElement('tr');
-  totalTr.className = 'total-row';
-  totalTr.innerHTML = '<td>Total</td><td>' + presentTodayCount + '</td><td>' + totalDaySum + '</td>';
-  body.appendChild(totalTr);
+function showDeleteConfirm(id){
+  deleteConfirmId = id;
+  document.getElementById('deleteConfirmOverlay').style.display = 'flex';
 }
+
+function hideDeleteConfirm(){
+  deleteConfirmId = null;
+  document.getElementById('deleteConfirmOverlay').style.display = 'none';
+}
+
+document.getElementById('deleteConfirmYes').addEventListener('click', async function(){
+  const id = deleteConfirmId;
+  hideDeleteConfirm();
+  if(id) await deleteStudent(id);
+});
+
+document.getElementById('deleteConfirmNo').addEventListener('click', function(){
+  hideDeleteConfirm();
+});
 
 function formatGramsSimple(g){
   if(g >= 1000){
@@ -823,7 +907,7 @@ function buildClassRows(tbodyId, classFrom, classTo, getCount){
     const count = getCount(c);
     total += count;
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + c + '</td><td>' + count + '</td>';
+    tr.innerHTML = '<td>' + c + '</td><td>' + pad2(count) + '</td>';
     tbody.appendChild(tr);
   }
   return total;
@@ -847,9 +931,9 @@ function renderTodayMDM(){
 
   const group15 = buildClassRows('todayPsRows', 1, 5, countForClass);
   const group68 = buildClassRows('todayMsRows', 6, 8, countForClass);
-  document.getElementById('todayPsTotal').textContent = group15;
-  document.getElementById('todayMsTotal').textContent = group68;
-  document.getElementById('todayGrandTotal').textContent = group15 + group68;
+  document.getElementById('todayPsTotal').textContent = pad2(group15);
+  document.getElementById('todayMsTotal').textContent = pad2(group68);
+  document.getElementById('todayGrandTotal').textContent = pad2(group15 + group68);
 
   const rice15 = skipped ? 0 : group15 * QTY.rice15;
   const rice68 = skipped ? 0 : group68 * QTY.rice68;
@@ -867,9 +951,9 @@ function renderTodayMDM(){
   document.getElementById('todayDishMs').textContent = formatGramsSimple(dish68);
   document.getElementById('todayDishGrand').textContent = formatGramsSimple(dishTotal);
 
-  document.getElementById('todayTotalAttValue').textContent = group15 + group68;
-  document.getElementById('todayPsAttValue').textContent = group15;
-  document.getElementById('todayMsAttValue').textContent = group68;
+  document.getElementById('todayTotalAttValue').textContent = pad2(group15 + group68);
+  document.getElementById('todayPsAttValue').textContent = pad2(group15);
+  document.getElementById('todayMsAttValue').textContent = pad2(group68);
 
   if(skipped){
     document.getElementById('todayRiceTotal').textContent = 'आज भोजन नहीं बना — कुल चावल 0 g';
@@ -899,8 +983,8 @@ function renderMonthlySummary(){
 
   const group15 = buildClassRows('monthPsRows', 1, 5, monthlyCountForClass);
   const group68 = buildClassRows('monthMsRows', 6, 8, monthlyCountForClass);
-  document.getElementById('monthPsTotal').textContent = group15;
-  document.getElementById('monthMsTotal').textContent = group68;
+  document.getElementById('monthPsTotal').textContent = pad2(group15);
+  document.getElementById('monthMsTotal').textContent = pad2(group68);
 }
 
 function renderMonthlyMDMIngredients(){
@@ -955,7 +1039,6 @@ dateInput.addEventListener('change', function(){
   updateDateDisplay();
   loadPendingMarksForDate();
   renderAttendanceList();
-  renderReport();
   renderTodayMDM();
   document.getElementById('mdmSkipCheckbox').checked = !!mdmSkipCache[dateInput.value];
   setMealTypeRadio(mdmMealTypeCache[dateInput.value] || 'sabzi');
@@ -989,7 +1072,6 @@ document.getElementById('mealTypeRow').addEventListener('change', async function
   await loadLocalFirst();
   loadPendingMarksForDate();
   renderAttendanceList();
-  renderReport();
   renderMonthlySummary();
   renderMonthlyMDMIngredients();
   renderTodayMDM();
