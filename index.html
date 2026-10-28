@@ -153,6 +153,14 @@
   .calendar-day.selected{background:var(--primary);color:#fff;font-weight:700;}
   .calendar-day.today:not(.selected){border:1.5px solid var(--primary);}
   .calendar-day.empty{visibility:hidden;cursor:default;}
+  /* Sunday / holiday = red, attendance nahi lagi (beeti tareekh) = yellow */
+  .calendar-day.missing{background:#fde047;color:#111827;font-weight:700;}
+  .calendar-day.sunday, .calendar-day.holiday{background:var(--absent);color:#fff;font-weight:700;}
+  .calendar-day.selected.sunday, .calendar-day.selected.holiday{background:var(--absent);color:#fff;box-shadow:0 0 0 2px var(--primary) inset;}
+  /* jis tareekh par attendance lag chuki hai = green (holiday red hi rehta hai) */
+  .calendar-day.attended{background:var(--present);color:#fff;font-weight:700;}
+  .calendar-day.selected.attended{background:var(--present);color:#fff;box-shadow:0 0 0 2px var(--primary) inset;}
+  .calendar-hint{font-size:11px;color:var(--absent);font-weight:700;text-align:center;margin-bottom:6px;}
 
   .group-summary{display:flex;gap:10px;}
   .summary-total{display:flex;background:#eff6ff;padding:12px;border-radius:10px;font-weight:700;color:var(--primary);font-size:14.5px;}
@@ -205,6 +213,7 @@
       </label>
     </div>
     <div class="summary-total" style="display:flex;margin-top:10px;flex-direction:column;gap:6px;align-items:flex-start;">
+      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">शाला लगने के दिन - </span><span style="color:#111827;font-weight:800;" id="schoolDaysValue">0</span></span>
       <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">Total उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayTotalAttValue">0</span></span>
       <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">PS उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayPsAttValue">0</span></span>
       <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">MS उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayMsAttValue">0</span></span>
@@ -340,8 +349,7 @@
   </div>
 
   <div class="card">
-    <h2>📊 साप्ताहिक रिपोर्ट — भोजन करने वाले बच्चे (<span id="weeklyLabel"></span>)</h2>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">हर बच्चे के हर भोजन-दिन को 1 गिना गया है (जिस दिन भोजन नहीं बना वो दिन नहीं गिना जाता)।</div>
+    <h2>📊 साप्ताहिक रिपोर्ट (<span id="weeklyLabel"></span>)</h2>
     <table>
       <thead>
         <tr><th class="kaksha-th">सप्ताह</th><th>तारीख</th><th>PS</th><th>MS</th><th>Total</th></tr>
@@ -404,8 +412,10 @@ let attendanceCache = {}; // {classNum: {dateStr: {studentId: 'P'|'A'}}}
 let pendingMarks = {};    // studentId -> 'P'|'A' for currently selected date
 let mdmSkipCache = {};    // {dateStr: true} - dates when no food was cooked (school-wide)
 let mdmMealTypeCache = {}; // {dateStr: 'sabzi'|'dal'} - which one was cooked that day (school-wide)
+let holidayCache = {};    // {dateStr: true} - dates marked as holiday (red in calendar)
 
-const todayStr = new Date().toISOString().split('T')[0];
+const _now = new Date(); // phone ki local date (India)
+const todayStr = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0') + '-' + String(_now.getDate()).padStart(2, '0');
 const currentMonthPrefix = todayStr.slice(0, 7); // "YYYY-MM"
 let selectedReportMonth = currentMonthPrefix;
 const dateInput = document.getElementById('attendanceDate');
@@ -486,12 +496,28 @@ function renderCalendarPopup(){
     '<button type="button" class="calendar-nav-btn" id="calPrevBtn">‹</button>' +
     '<span>' + MONTH_NAMES[calMonth] + ' ' + calYear + '</span>' +
     '<button type="button" class="calendar-nav-btn" id="calNextBtn">›</button>' +
-    '</div><div class="calendar-grid">';
+    '</div>' +
+    (editModeGlobal ? '<div class="calendar-hint">Edit चालू: तारीख पर क्लिक = छुट्टी लगाएँ / हटाएँ</div>' : '') +
+    '<div class="calendar-grid">';
   WEEKDAYS_SHORT.forEach(function(w){ html += '<div class="calendar-weekday">' + w + '</div>'; });
   for(let i=0;i<firstDay;i++){ html += '<div class="calendar-day empty"></div>'; }
+  const attended = getAttendedDates();
+  let firstAttendedDate = null;
+  attended.forEach(function(d){ if(firstAttendedDate === null || d < firstAttendedDate) firstAttendedDate = d; });
+
   for(let day=1; day<=daysInMonth; day++){
     const iso = toISO(calYear, calMonth, day);
+    const isSunday = new Date(calYear, calMonth, day).getDay() === 0;
+    const isHoliday = !!holidayCache[iso];
     let cls = 'calendar-day';
+    if(isSunday) cls += ' sunday';
+    if(isHoliday) cls += ' holiday';
+    // beeti tareekh jis din attendance nahi lagi (Sunday/holiday/aaj ko chhodkar) = yellow
+    if(!isSunday && !isHoliday && firstAttendedDate !== null &&
+       iso > firstAttendedDate && iso < todayStr && !attended.has(iso)){
+      cls += ' missing';
+    }
+    if(attended.has(iso) && !isHoliday) cls += ' attended';
     if(iso === selectedISO) cls += ' selected';
     if(iso === todayStr) cls += ' today';
     html += '<div class="' + cls + '" data-iso="' + iso + '">' + day + '</div>';
@@ -510,13 +536,42 @@ function renderCalendarPopup(){
     renderCalendarPopup();
   });
   popup.querySelectorAll('.calendar-day[data-iso]').forEach(function(el){
-    el.addEventListener('click', function(e){
+    el.addEventListener('click', async function(e){
       e.stopPropagation();
-      dateInput.value = el.dataset.iso;
+      const iso = el.dataset.iso;
+      if(editModeGlobal){
+        // Edit tick hai: tareekh par click = holiday lagao / hatao (calendar khula rehta hai)
+        if(holidayCache[iso]) delete holidayCache[iso];
+        else holidayCache[iso] = true;
+        renderCalendarPopup();
+        await persistHolidays();
+        return;
+      }
+      dateInput.value = iso;
       popup.style.display = 'none';
       dateInput.dispatchEvent(new Event('change'));
     });
   });
+}
+
+// un tareekhon ka set jin par kisi bhi kaksha mein kam se kam ek bacche ki Present lagi hai
+function getAttendedDates(){
+  const set = new Set();
+  for(let c=1;c<=8;c++){
+    const att = attendanceCache[c] || {};
+    Object.keys(att).forEach(function(d){
+      const rec = att[d] || {};
+      for(const sid in rec){
+        if(rec[sid] === 'P'){ set.add(d); break; }
+      }
+    });
+  }
+  return set;
+}
+
+function refreshCalendarIfOpen(){
+  const popup = document.getElementById('calendarPopup');
+  if(popup && popup.style.display === 'block') renderCalendarPopup();
 }
 
 document.getElementById('attendanceDateText').addEventListener('click', function(e){
@@ -544,6 +599,8 @@ const MDM_SKIP_KEY = 'mdm-skip-dates';
 const MDM_SKIP_PATH = 'mdmSkip';
 const MDM_MEALTYPE_KEY = 'mdm-meal-type';
 const MDM_MEALTYPE_PATH = 'mdmMealType';
+const HOLIDAY_KEY = 'mdm-holidays';
+const HOLIDAY_PATH = 'holidays';
 
 // ---- local backup (always works, even fully offline) ----
 // phone/browser ki apni storage (localStorage) - net band ho, page band ho ya refresh ho, data bachta hai
@@ -568,7 +625,7 @@ function anyDirty(){
   for(let c=1;c<=8;c++){
     if(isDirty(studentsKey(c)) || isDirty(attendanceKey(c))) return true;
   }
-  return isDirty(MDM_SKIP_KEY) || isDirty(MDM_MEALTYPE_KEY);
+  return isDirty(MDM_SKIP_KEY) || isDirty(MDM_MEALTYPE_KEY) || isDirty(HOLIDAY_KEY);
 }
 
 let fbConnected = true;
@@ -579,9 +636,7 @@ function updateSyncStatus(){
   if(!w) return;
   const offline = !navigator.onLine || !fbConnected;
   if(offline){
-    w.style.display = 'block';
-    w.style.color = '#b45309';
-    w.textContent = '⚠️ इंटरनेट बंद/धीमा है — डेटा इस फोन में सुरक्षित है, नेट आते ही अपने आप सेव हो जाएगा।';
+    w.style.display = 'none'; // offline warning nahi dikhani; data phone mein save hota rehta hai
   }else if(anyDirty()){
     w.style.display = 'block';
     w.style.color = '#2563eb';
@@ -617,6 +672,7 @@ function pushAllDirty(){
   }
   if(isDirty(MDM_SKIP_KEY)) persistMdmSkip();
   if(isDirty(MDM_MEALTYPE_KEY)) persistMdmMealType();
+  if(isDirty(HOLIDAY_KEY)) persistHolidays();
 }
 
 // ---- 1) load local copy first, so the app works instantly even offline ----
@@ -631,6 +687,8 @@ async function loadLocalFirst(){
   try{ mdmSkipCache = skipRaw ? JSON.parse(skipRaw) : {}; }catch(e){ mdmSkipCache = {}; }
   const mealRaw = await localGet(MDM_MEALTYPE_KEY);
   try{ mdmMealTypeCache = mealRaw ? JSON.parse(mealRaw) : {}; }catch(e){ mdmMealTypeCache = {}; }
+  const holRaw = await localGet(HOLIDAY_KEY);
+  try{ holidayCache = holRaw ? JSON.parse(holRaw) : {}; }catch(e){ holidayCache = {}; }
 }
 
 // ---- 2) attach live Firebase listeners: whenever server data changes (including
@@ -678,6 +736,15 @@ function attachFirebaseListeners(){
     renderTodayMDM();
   }, function(){ showOfflineWarning(); });
 
+  window.fbOnValue(window.fbRef(window.fbDb, HOLIDAY_PATH), function(snapshot){
+    if(isDirty(HOLIDAY_KEY)) return;
+    const val = snapshot.val() || {};
+    holidayCache = val;
+    localSet(HOLIDAY_KEY, JSON.stringify(val));
+    hideOfflineWarning();
+    refreshCalendarIfOpen();
+  }, function(){ showOfflineWarning(); });
+
   window.fbOnValue(window.fbRef(window.fbDb, MDM_MEALTYPE_PATH), function(snapshot){
     if(isDirty(MDM_MEALTYPE_KEY)) return;
     const val = snapshot.val() || {};
@@ -703,6 +770,10 @@ async function persistAttendance(c){
 async function persistMdmSkip(){
   await localSet(MDM_SKIP_KEY, JSON.stringify(mdmSkipCache));
   pushRemote(MDM_SKIP_KEY, MDM_SKIP_PATH, mdmSkipCache);
+}
+async function persistHolidays(){
+  await localSet(HOLIDAY_KEY, JSON.stringify(holidayCache));
+  pushRemote(HOLIDAY_KEY, HOLIDAY_PATH, holidayCache);
 }
 async function persistMdmMealType(){
   await localSet(MDM_MEALTYPE_KEY, JSON.stringify(mdmMealTypeCache));
@@ -1008,6 +1079,13 @@ function renderTodayMDM(){
   document.getElementById('todayDishPs').textContent = formatGramsSimple(dish15);
   document.getElementById('todayDishMs').textContent = formatGramsSimple(dish68);
   document.getElementById('todayDishGrand').textContent = formatGramsSimple(dishTotal);
+
+  // is mahine (dropdown wala mahina) mein jitni tareekhon par attendance lagi hai
+  let schoolDays = 0;
+  getAttendedDates().forEach(function(d){
+    if(d.slice(0,7) === selectedReportMonth) schoolDays++;
+  });
+  document.getElementById('schoolDaysValue').textContent = pad2(schoolDays);
 
   document.getElementById('todayTotalAttValue').textContent = pad2(group15 + group68);
   document.getElementById('todayPsAttValue').textContent = pad2(group15);
