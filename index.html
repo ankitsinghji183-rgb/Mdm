@@ -546,27 +546,77 @@ const MDM_MEALTYPE_KEY = 'mdm-meal-type';
 const MDM_MEALTYPE_PATH = 'mdmMealType';
 
 // ---- local backup (always works, even fully offline) ----
+// phone/browser ki apni storage (localStorage) - net band ho, page band ho ya refresh ho, data bachta hai
 async function localGet(key){
   try{
-    const r = await window.storage.get(key, false);
-    return r ? r.value : null;
+    return window.localStorage.getItem('mdm:' + key);
   }catch(e){
     return null;
   }
 }
 async function localSet(key, value){
   try{
-    await window.storage.set(key, value, false);
-  }catch(e){ /* ignore - local backup is best-effort */ }
+    window.localStorage.setItem('mdm:' + key, value);
+  }catch(e){ /* ignore */ }
 }
 
-function showOfflineWarning(){
-  const w = document.getElementById('storageWarn');
-  w.style.display = 'block';
-  w.textContent = '⚠️ Firebase से कनेक्ट नहीं हो पा रहा — डेटा अभी इस डिवाइस पर सुरक्षित है, इंटरनेट आते ही अपने आप सिंक हो जाएगा।';
+// "dirty" = ye data phone mein save hai par abhi Firebase server par pahunch kar confirm nahi hua
+function setDirty(k){ try{ window.localStorage.setItem('mdm-dirty:' + k, '1'); }catch(e){} }
+function clearDirty(k){ try{ window.localStorage.removeItem('mdm-dirty:' + k); }catch(e){} }
+function isDirty(k){ try{ return window.localStorage.getItem('mdm-dirty:' + k) === '1'; }catch(e){ return false; } }
+function anyDirty(){
+  for(let c=1;c<=8;c++){
+    if(isDirty(studentsKey(c)) || isDirty(attendanceKey(c))) return true;
+  }
+  return isDirty(MDM_SKIP_KEY) || isDirty(MDM_MEALTYPE_KEY);
 }
-function hideOfflineWarning(){
-  document.getElementById('storageWarn').style.display = 'none';
+
+let fbConnected = true;
+const pendingWrites = {};
+
+function updateSyncStatus(){
+  const w = document.getElementById('storageWarn');
+  if(!w) return;
+  const offline = !navigator.onLine || !fbConnected;
+  if(offline){
+    w.style.display = 'block';
+    w.style.color = '#b45309';
+    w.textContent = '⚠️ इंटरनेट बंद/धीमा है — डेटा इस फोन में सुरक्षित है, नेट आते ही अपने आप सेव हो जाएगा।';
+  }else if(anyDirty()){
+    w.style.display = 'block';
+    w.style.color = '#2563eb';
+    w.textContent = '⏳ डेटा सर्वर पर सेव हो रहा है…';
+  }else{
+    w.style.display = 'none';
+  }
+}
+function showOfflineWarning(){ updateSyncStatus(); }
+function hideOfflineWarning(){ updateSyncStatus(); }
+
+// Firebase par bhejo (UI ko rokte nahi). Jab tak server confirm na kare, dirty flag lagi rehti hai.
+function pushRemote(key, path, value){
+  setDirty(key);
+  if(!window.fbSet || !window.fbDb){ updateSyncStatus(); return; } // Firebase load hi nahi hua (net band) - data phone mein dirty rehta hai
+  pendingWrites[key] = (pendingWrites[key] || 0) + 1;
+  window.fbSet(window.fbRef(window.fbDb, path), value).then(function(){
+    pendingWrites[key]--;
+    if(pendingWrites[key] <= 0) clearDirty(key);
+    updateSyncStatus();
+  }).catch(function(){
+    pendingWrites[key]--;
+    updateSyncStatus();
+  });
+  updateSyncStatus();
+}
+
+// sirf wahi data bhejo jo abhi tak sync nahi hua
+function pushAllDirty(){
+  for(let c=1;c<=8;c++){
+    if(isDirty(studentsKey(c))) persistStudents(c);
+    if(isDirty(attendanceKey(c))) persistAttendance(c);
+  }
+  if(isDirty(MDM_SKIP_KEY)) persistMdmSkip();
+  if(isDirty(MDM_MEALTYPE_KEY)) persistMdmMealType();
 }
 
 // ---- 1) load local copy first, so the app works instantly even offline ----
@@ -589,6 +639,7 @@ function attachFirebaseListeners(){
   for(let c=1;c<=8;c++){
     (function(c){
       window.fbOnValue(window.fbRef(window.fbDb, studentsPath(c)), function(snapshot){
+        if(isDirty(studentsKey(c))) return; // phone ka naya data abhi server par gaya nahi - use overwrite na karo
         const val = snapshot.val();
         const arr = val ? (Array.isArray(val) ? val.filter(Boolean) : Object.values(val)) : [];
         studentsCache[c] = arr;
@@ -601,6 +652,7 @@ function attachFirebaseListeners(){
       }, function(){ showOfflineWarning(); });
 
       window.fbOnValue(window.fbRef(window.fbDb, attendancePath(c)), function(snapshot){
+        if(isDirty(attendanceKey(c))) return; // unsynced local data ko server ka purana data overwrite na kare
         const val = snapshot.val() || {};
         attendanceCache[c] = val;
         localSet(attendanceKey(c), JSON.stringify(val));
@@ -614,6 +666,7 @@ function attachFirebaseListeners(){
   }
 
   window.fbOnValue(window.fbRef(window.fbDb, MDM_SKIP_PATH), function(snapshot){
+    if(isDirty(MDM_SKIP_KEY)) return;
     const val = snapshot.val() || {};
     mdmSkipCache = val;
     localSet(MDM_SKIP_KEY, JSON.stringify(val));
@@ -626,6 +679,7 @@ function attachFirebaseListeners(){
   }, function(){ showOfflineWarning(); });
 
   window.fbOnValue(window.fbRef(window.fbDb, MDM_MEALTYPE_PATH), function(snapshot){
+    if(isDirty(MDM_MEALTYPE_KEY)) return;
     const val = snapshot.val() || {};
     mdmMealTypeCache = val;
     localSet(MDM_MEALTYPE_KEY, JSON.stringify(val));
@@ -637,51 +691,32 @@ function attachFirebaseListeners(){
 }
 
 // ---- 3) every write: save locally immediately, then push to Firebase ----
+// Pehle phone mein turant save (hamesha kaam karta hai), phir Firebase par bhejo bina wait kiye.
 async function persistStudents(c){
   await localSet(studentsKey(c), JSON.stringify(studentsCache[c]));
-  try{
-    await window.fbSet(window.fbRef(window.fbDb, studentsPath(c)), studentsCache[c]);
-    hideOfflineWarning();
-  }catch(e){
-    showOfflineWarning();
-  }
+  pushRemote(studentsKey(c), studentsPath(c), studentsCache[c]);
 }
 async function persistAttendance(c){
   await localSet(attendanceKey(c), JSON.stringify(attendanceCache[c]));
-  try{
-    await window.fbSet(window.fbRef(window.fbDb, attendancePath(c)), attendanceCache[c]);
-    hideOfflineWarning();
-  }catch(e){
-    showOfflineWarning();
-  }
+  pushRemote(attendanceKey(c), attendancePath(c), attendanceCache[c]);
 }
 async function persistMdmSkip(){
   await localSet(MDM_SKIP_KEY, JSON.stringify(mdmSkipCache));
-  try{
-    await window.fbSet(window.fbRef(window.fbDb, MDM_SKIP_PATH), mdmSkipCache);
-    hideOfflineWarning();
-  }catch(e){
-    showOfflineWarning();
-  }
+  pushRemote(MDM_SKIP_KEY, MDM_SKIP_PATH, mdmSkipCache);
 }
 async function persistMdmMealType(){
   await localSet(MDM_MEALTYPE_KEY, JSON.stringify(mdmMealTypeCache));
-  try{
-    await window.fbSet(window.fbRef(window.fbDb, MDM_MEALTYPE_PATH), mdmMealTypeCache);
-    hideOfflineWarning();
-  }catch(e){
-    showOfflineWarning();
-  }
+  pushRemote(MDM_MEALTYPE_KEY, MDM_MEALTYPE_PATH, mdmMealTypeCache);
 }
 
-// ---- 4) as soon as internet comes back, push whatever we have locally to Firebase ----
+// ---- 4) net wapas aate hi jo data sync nahi hua use Firebase par bhej do ----
 window.addEventListener('online', function(){
-  for(let c=1;c<=8;c++){
-    persistStudents(c);
-    persistAttendance(c);
-  }
-  persistMdmSkip();
-  persistMdmMealType();
+  fbConnected = true;
+  pushAllDirty();
+  updateSyncStatus();
+});
+window.addEventListener('offline', function(){
+  updateSyncStatus();
 });
 
 function buildTabs(){
@@ -1158,7 +1193,20 @@ document.getElementById('mealTypeRow').addEventListener('change', async function
   renderTodayMDM();
   document.getElementById('mdmSkipCheckbox').checked = !!mdmSkipCache[dateInput.value];
   setMealTypeRadio(mdmMealTypeCache[dateInput.value] || 'sabzi');
-  attachFirebaseListeners();
+  try{
+    attachFirebaseListeners();
+    // Firebase connection ki asli sthiti (slow/band net pakadne ke liye)
+    window.fbOnValue(window.fbRef(window.fbDb, '.info/connected'), function(snap){
+      fbConnected = (snap.val() === true);
+      if(fbConnected) pushAllDirty();
+      updateSyncStatus();
+    });
+  }catch(e){
+    fbConnected = false; // Firebase load nahi hua - page local data se chalega
+  }
+  // pichhli baar ka jo data sync nahi hua tha, use abhi bhej do
+  pushAllDirty();
+  updateSyncStatus();
 })();
 
 })();
