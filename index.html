@@ -160,6 +160,12 @@
   /* jis tareekh par attendance lag chuki hai = green (holiday red hi rehta hai) */
   .calendar-day.attended{background:var(--present);color:#fff;font-weight:700;}
   .calendar-day.selected.attended{background:var(--present);color:#fff;box-shadow:0 0 0 2px var(--primary) inset;}
+  /* bina side mein khiskaye poori table screen par aaye */
+  #attendanceListTable{table-layout:auto;width:100%;}
+  #attendanceListTable th, #attendanceListTable td{padding:8px 3px;font-size:13px;}
+  #attendanceListTable th{line-height:1.25;}
+  #attendanceListTable .toggle-btn{padding:6px 9px;font-size:12.5px;}
+  #attendanceListTable th:last-child, #attendanceListTable td:last-child{width:1%;padding-left:0;padding-right:0;}
   .calendar-hint{font-size:11px;color:var(--absent);font-weight:700;text-align:center;margin-bottom:6px;}
 
   .group-summary{display:flex;gap:10px;}
@@ -192,7 +198,10 @@
   <div class="warn" id="storageWarn" style="display:none;"></div>
 
   <div class="card">
-    <h2>➕ नया बच्चा जोड़ें (कक्षा <span id="addClassLabel">1</span>)</h2>
+    <h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span>➕ नया बच्चा जोड़ें (कक्षा <span id="addClassLabel">1</span>)</span>
+      <select id="sessionSelect" aria-label="सत्र चुनें" style="flex:0 0 auto;min-width:0;width:auto;padding:6px 8px;font-size:13px;font-weight:700;color:var(--primary);"></select>
+    </h2>
     <div class="row">
       <input type="text" id="studentNameInput" placeholder="बच्चे का नाम लिखें...">
       <button class="btn-add" id="addStudentBtn">जोड़ें</button>
@@ -201,6 +210,12 @@
       <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#b45309;cursor:pointer;">
         <input type="checkbox" id="mdmSkipCheckbox" style="width:18px;height:18px;">
         आज भोजन (MDM) नहीं बना
+      </label>
+    </div>
+    <div class="row" style="background:#fefce8;padding:8px 10px;border-radius:8px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:#854d0e;cursor:pointer;">
+        <input type="checkbox" id="zeroAttCheckbox" style="width:18px;height:18px;">
+        आज उपस्थिति 0 (शिक्षक आए, बच्चे नहीं)
       </label>
     </div>
     <div class="row" id="mealTypeRow" style="background:#f0fdf4;padding:8px 10px;border-radius:8px;gap:16px;">
@@ -213,8 +228,7 @@
       </label>
     </div>
     <div class="summary-total" style="display:flex;margin-top:10px;flex-direction:column;gap:6px;align-items:flex-start;">
-      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">शाला लगने के दिन - </span><span style="color:#111827;font-weight:800;" id="schoolDaysValue">0</span><span style="color:var(--muted);font-weight:700;font-size:13px;"> (<span id="schoolDaysMonth"></span>)</span></span>
-      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">Total उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayTotalAttValue">0</span></span>
+      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">शाला लगने के दिन - </span><span style="color:#111827;font-weight:800;" id="schoolDaysValue">0</span><span style="color:var(--muted);font-weight:700;font-size:13px;"> (<span id="schoolDaysMonth"></span>)</span></span>      <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">Total उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayTotalAttValue">0</span></span>
       <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">PS उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayPsAttValue">0</span></span>
       <span style="font-size:15px;"><span style="color:var(--primary);font-weight:800;">MS उपस्थिति - </span><span style="color:#111827;font-weight:800;" id="todayMsAttValue">0</span></span>
       <span class="rice-green" id="todayRiceTotal" style="font-size:15px;"></span>
@@ -237,16 +251,11 @@
     <div style="overflow-x:auto;">
     <table id="attendanceListTable">
       <thead>
-        <tr><th class="kaksha-th">नाम</th><th>उपस्थिति</th><th>माह में कुल उपस्थिति</th><th></th></tr>
+        <tr id="attHeadRow"></tr>
       </thead>
       <tbody id="studentListForAttendance"></tbody>
       <tfoot>
-        <tr class="total-row">
-          <td>Total</td>
-          <td id="attTodayPresentTotal">0</td>
-          <td id="attMonthGrandTotal">0</td>
-          <td></td>
-        </tr>
+        <tr class="total-row" id="attFootRow"></tr>
       </tfoot>
     </table>
     </div>
@@ -413,6 +422,7 @@ let pendingMarks = {};    // studentId -> 'P'|'A' for currently selected date
 let mdmSkipCache = {};    // {dateStr: true} - dates when no food was cooked (school-wide)
 let mdmMealTypeCache = {}; // {dateStr: 'sabzi'|'dal'} - which one was cooked that day (school-wide)
 let holidayCache = {};    // {dateStr: true} - dates marked as holiday (red in calendar)
+let zeroDayCache = {};    // {dateStr: true} - shala lagi (teacher aaye) par upasthiti 0 thi
 
 const _now = new Date(); // phone ki local date (India)
 const todayStr = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0') + '-' + String(_now.getDate()).padStart(2, '0');
@@ -430,23 +440,69 @@ function monthLabel(prefix){
   return MONTH_NAMES[m] + ' ' + y;
 }
 
+// ---- satra (session): April se March. Pehla satra 2026-27; naya satra April aate hi apne aap judta hai ----
+const FIRST_SESSION_START = 2026; // 2026-27
+function sessionStartOfDate(iso){
+  const y = parseInt(iso.slice(0,4), 10);
+  const m = parseInt(iso.slice(5,7), 10);
+  return (m >= 4) ? y : y - 1;
+}
+const currentSessionStart = Math.max(sessionStartOfDate(todayStr), FIRST_SESSION_START);
+let selectedSession = currentSessionStart;
+
+function sessionLabel(startYear){
+  return startYear + '-' + String((startYear + 1) % 100).padStart(2, '0');
+}
+
+function buildSessionDropdown(){
+  const sel = document.getElementById('sessionSelect');
+  sel.innerHTML = '';
+  for(let y = currentSessionStart; y >= FIRST_SESSION_START; y--){ // naya satra upar
+    const opt = document.createElement('option');
+    opt.value = String(y);
+    opt.textContent = sessionLabel(y);
+    if(y === selectedSession) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
 function buildMonthDropdown(){
   const sel = document.getElementById('reportMonthSelect');
   sel.innerHTML = '';
-  const now = new Date();
-  // April 2025 se current month tak (naya mahina upar)
-  const START_YEAR = 2025, START_MONTH = 3; // 3 = April
-  const totalMonths = (now.getFullYear() - START_YEAR) * 12 + (now.getMonth() - START_MONTH) + 1;
-  for(let i=0;i<totalMonths;i++){
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const prefix = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  // chune hue satra ke April se March tak ke mahine (chalu satra mein sirf aaj ke mahine tak), naya mahina upar
+  const list = [];
+  for(let i=0;i<12;i++){
+    const mo = 4 + i;
+    const y = selectedSession + (mo > 12 ? 1 : 0);
+    const m = mo > 12 ? mo - 12 : mo;
+    const prefix = y + '-' + String(m).padStart(2,'0');
+    if(selectedSession === currentSessionStart && prefix > currentMonthPrefix) break;
+    list.push(prefix);
+  }
+  list.reverse();
+  list.forEach(function(prefix){
     const opt = document.createElement('option');
     opt.value = prefix;
     opt.textContent = monthLabel(prefix);
     if(prefix === selectedReportMonth) opt.selected = true;
     sel.appendChild(opt);
-  }
+  });
 }
+
+document.getElementById('sessionSelect').addEventListener('change', function(e){
+  selectedSession = parseInt(e.target.value, 10);
+  const isCurrent = (selectedSession === currentSessionStart);
+  selectedReportMonth = isCurrent ? currentMonthPrefix : (selectedSession + 1) + '-03';
+  buildMonthDropdown();
+  // chalu satra mein aaj ki tareekh, purane satra mein uska aakhri din
+  dateInput.value = isCurrent ? todayStr : (selectedSession + 1) + '-03-31';
+  const popup = document.getElementById('calendarPopup');
+  if(popup) popup.style.display = 'none';
+  dateInput.dispatchEvent(new Event('change'));
+  renderMonthlySummary();
+  renderMonthlyMDMIngredients();
+  updateSchoolDays();
+});
 
 document.getElementById('reportMonthSelect').addEventListener('change', function(e){
   selectedReportMonth = e.target.value;
@@ -526,13 +582,18 @@ function renderCalendarPopup(){
   popup.innerHTML = html;
   updateSchoolDays();
 
+  // calendar sirf chune hue satra (April se March) ke andar chalta hai
+  const minIdx = selectedSession * 12 + 3;        // April
+  const maxIdx = (selectedSession + 1) * 12 + 2;  // March
   document.getElementById('calPrevBtn').addEventListener('click', function(e){
     e.stopPropagation();
+    if(calYear * 12 + calMonth - 1 < minIdx) return;
     calMonth--; if(calMonth < 0){ calMonth = 11; calYear--; }
     renderCalendarPopup();
   });
   document.getElementById('calNextBtn').addEventListener('click', function(e){
     e.stopPropagation();
+    if(calYear * 12 + calMonth + 1 > maxIdx) return;
     calMonth++; if(calMonth > 11){ calMonth = 0; calYear++; }
     renderCalendarPopup();
   });
@@ -557,14 +618,19 @@ function renderCalendarPopup(){
 
 // "शाला लगने के दिन": date wale calendar mein jo mahina dikh raha hai (calendar khula ho),
 // warna chuni hui tareekh ke mahine mein, jitni tareekhon par attendance lagi hai
-function updateSchoolDays(){
+let lastViewPrefix = null;
+
+// date wale calendar ka mahina "YYYY-MM": calendar khula ho to usme dikh raha mahina, warna chuni hui tareekh ka mahina
+function getViewPrefix(){
   const popup = document.getElementById('calendarPopup');
-  let prefix;
   if(popup && popup.style.display === 'block' && typeof calYear === 'number'){
-    prefix = calYear + '-' + String(calMonth + 1).padStart(2, '0');
-  }else{
-    prefix = (dateInput.value || todayStr).slice(0, 7);
+    return calYear + '-' + String(calMonth + 1).padStart(2, '0');
   }
+  return (dateInput.value || todayStr).slice(0, 7);
+}
+
+function updateSchoolDays(){
+  const prefix = getViewPrefix();
   let count = 0;
   getAttendedDates().forEach(function(d){
     if(d.slice(0,7) === prefix) count++;
@@ -573,6 +639,11 @@ function updateSchoolDays(){
   const m = document.getElementById('schoolDaysMonth');
   if(v) v.textContent = pad2(count);
   if(m) m.textContent = monthLabel(prefix);
+
+  // mahina badla to bacchon ki table ka "सत्र में कुल" bhi usi mahine tak ka dikhao
+  if(prefix !== lastViewPrefix){
+    renderAttendanceList();
+  }
 }
 
 // un tareekhon ka set jin par kisi bhi kaksha mein kam se kam ek bacche ki Present lagi hai
@@ -587,7 +658,17 @@ function getAttendedDates(){
       }
     });
   }
+  // jis din upasthiti 0 thi par teacher aaye the, wo din bhi shala ka din
+  Object.keys(zeroDayCache || {}).forEach(function(d){ if(zeroDayCache[d]) set.add(d); });
   return set;
+}
+
+// satra (session) April se March tak: given "YYYY-MM" ka satra kis April se shuru hua
+function sessionStartPrefix(prefix){
+  const y = parseInt(prefix.slice(0,4), 10);
+  const m = parseInt(prefix.slice(5,7), 10);
+  const sy = (m >= 4) ? y : y - 1;
+  return sy + '-04';
 }
 
 function refreshCalendarIfOpen(){
@@ -625,6 +706,8 @@ const MDM_MEALTYPE_KEY = 'mdm-meal-type';
 const MDM_MEALTYPE_PATH = 'mdmMealType';
 const HOLIDAY_KEY = 'mdm-holidays';
 const HOLIDAY_PATH = 'holidays';
+const ZERO_KEY = 'mdm-zero-days';
+const ZERO_PATH = 'zeroDays';
 
 // ---- local backup (always works, even fully offline) ----
 // phone/browser ki apni storage (localStorage) - net band ho, page band ho ya refresh ho, data bachta hai
@@ -649,7 +732,7 @@ function anyDirty(){
   for(let c=1;c<=8;c++){
     if(isDirty(studentsKey(c)) || isDirty(attendanceKey(c))) return true;
   }
-  return isDirty(MDM_SKIP_KEY) || isDirty(MDM_MEALTYPE_KEY) || isDirty(HOLIDAY_KEY);
+  return isDirty(MDM_SKIP_KEY) || isDirty(MDM_MEALTYPE_KEY) || isDirty(HOLIDAY_KEY) || isDirty(ZERO_KEY);
 }
 
 let fbConnected = true;
@@ -697,6 +780,7 @@ function pushAllDirty(){
   if(isDirty(MDM_SKIP_KEY)) persistMdmSkip();
   if(isDirty(MDM_MEALTYPE_KEY)) persistMdmMealType();
   if(isDirty(HOLIDAY_KEY)) persistHolidays();
+  if(isDirty(ZERO_KEY)) persistZeroDays();
 }
 
 // ---- 1) load local copy first, so the app works instantly even offline ----
@@ -713,6 +797,8 @@ async function loadLocalFirst(){
   try{ mdmMealTypeCache = mealRaw ? JSON.parse(mealRaw) : {}; }catch(e){ mdmMealTypeCache = {}; }
   const holRaw = await localGet(HOLIDAY_KEY);
   try{ holidayCache = holRaw ? JSON.parse(holRaw) : {}; }catch(e){ holidayCache = {}; }
+  const zeroRaw = await localGet(ZERO_KEY);
+  try{ zeroDayCache = zeroRaw ? JSON.parse(zeroRaw) : {}; }catch(e){ zeroDayCache = {}; }
 }
 
 // ---- 2) attach live Firebase listeners: whenever server data changes (including
@@ -760,6 +846,18 @@ function attachFirebaseListeners(){
     renderTodayMDM();
   }, function(){ showOfflineWarning(); });
 
+  window.fbOnValue(window.fbRef(window.fbDb, ZERO_PATH), function(snapshot){
+    if(isDirty(ZERO_KEY)) return;
+    const val = snapshot.val() || {};
+    zeroDayCache = val;
+    localSet(ZERO_KEY, JSON.stringify(val));
+    hideOfflineWarning();
+    const cb = document.getElementById('zeroAttCheckbox');
+    if(cb) cb.checked = !!zeroDayCache[dateInput.value];
+    updateSchoolDays();
+    refreshCalendarIfOpen();
+  }, function(){ showOfflineWarning(); });
+
   window.fbOnValue(window.fbRef(window.fbDb, HOLIDAY_PATH), function(snapshot){
     if(isDirty(HOLIDAY_KEY)) return;
     const val = snapshot.val() || {};
@@ -794,6 +892,10 @@ async function persistAttendance(c){
 async function persistMdmSkip(){
   await localSet(MDM_SKIP_KEY, JSON.stringify(mdmSkipCache));
   pushRemote(MDM_SKIP_KEY, MDM_SKIP_PATH, mdmSkipCache);
+}
+async function persistZeroDays(){
+  await localSet(ZERO_KEY, JSON.stringify(zeroDayCache));
+  pushRemote(ZERO_KEY, ZERO_PATH, zeroDayCache);
 }
 async function persistHolidays(){
   await localSet(HOLIDAY_KEY, JSON.stringify(holidayCache));
@@ -908,6 +1010,16 @@ function renderAttendanceList(){
 
   let todayPresentTotal = 0;
   let monthGrandTotal = 0;
+  let sessionGrandTotal = 0;
+
+  // satra ke April se lekar abhi chune hue mahine tak ke har mahine ka column
+  const viewPrefix = getViewPrefix();
+  lastViewPrefix = viewPrefix;
+  const months = sessionMonthList(viewPrefix);
+  const monthTotals = months.map(function(){ return 0; });
+  let headHtml = '<th class="kaksha-th">नाम</th><th>उपस्थिति</th><th>माह में कुल</th>';
+  headHtml += '<th>सत्र में कुल</th><th></th>';
+  document.getElementById('attHeadRow').innerHTML = headHtml;
 
   students.forEach(function(s){
     const mark = pendingMarks[s.id];
@@ -920,7 +1032,7 @@ function renderAttendanceList(){
     const nameTd = document.createElement('td');
     nameTd.style.textAlign = 'left';
     nameTd.style.fontWeight = '600';
-    nameTd.style.whiteSpace = 'nowrap';
+    nameTd.style.whiteSpace = 'normal'; // lamba naam agli line mein aa jaye, table chaudi na ho
     nameTd.textContent = s.name;
 
     const presentTd = document.createElement('td');
@@ -937,6 +1049,22 @@ function renderAttendanceList(){
     monthTd.style.color = '#111827';
     monthTd.textContent = pad2(monthlyCount);
 
+    const perMonth = getStudentMonthCounts(s.id, months);
+    let sessionCount = 0;
+    const monthTds = perMonth.map(function(cnt, i){
+      sessionCount += cnt;
+      monthTotals[i] += cnt;
+      const td = document.createElement('td');
+      td.style.color = '#111827';
+      td.textContent = pad2(cnt);
+      return td;
+    });
+    sessionGrandTotal += sessionCount;
+    const sessionTd = document.createElement('td');
+    sessionTd.style.fontWeight = '700';
+    sessionTd.style.color = '#111827';
+    sessionTd.textContent = pad2(sessionCount);
+
     const delTd = document.createElement('td');
     delTd.style.whiteSpace = 'nowrap';
 
@@ -952,12 +1080,46 @@ function renderAttendanceList(){
     tr.appendChild(nameTd);
     tr.appendChild(presentTd);
     tr.appendChild(monthTd);
+    tr.appendChild(sessionTd);
     tr.appendChild(delTd);
     listBody.appendChild(tr);
   });
 
-  document.getElementById('attTodayPresentTotal').textContent = pad2(todayPresentTotal);
-  document.getElementById('attMonthGrandTotal').textContent = pad2(monthGrandTotal);
+  let footHtml = '<td>Total</td><td>' + pad2(todayPresentTotal) + '</td><td>' + pad2(monthGrandTotal) + '</td>';
+  footHtml += '<td>' + pad2(sessionGrandTotal) + '</td><td></td>';
+  document.getElementById('attFootRow').innerHTML = footHtml;
+}
+
+// satra ke April se chune hue mahine tak ke mahino ki list, jaise ['2026-04', ..., '2026-10']
+function sessionMonthList(endPrefix){
+  const list = [];
+  let y = parseInt(sessionStartPrefix(endPrefix).slice(0,4), 10);
+  let m = 4;
+  const endY = parseInt(endPrefix.slice(0,4), 10);
+  const endM = parseInt(endPrefix.slice(5,7), 10);
+  while(y < endY || (y === endY && m <= endM)){
+    list.push(y + '-' + String(m).padStart(2, '0'));
+    m++;
+    if(m > 12){ m = 1; y++; }
+  }
+  return list;
+}
+
+function shortMonthLabel(prefix){
+  const mi = parseInt(prefix.slice(5,7), 10) - 1;
+  return MONTH_NAMES[mi].slice(0,3) + ' ' + prefix.slice(2,4);
+}
+
+// is bacche ki diye gaye har mahine mein kul upasthiti (list ke same kram mein)
+function getStudentMonthCounts(studentId, months){
+  const att = attendanceCache[currentClass] || {};
+  const counts = months.map(function(){ return 0; });
+  Object.keys(att).forEach(function(d){
+    const idx = months.indexOf(d.slice(0,7));
+    if(idx < 0) return;
+    if(att[d] && att[d][studentId] === 'P') counts[idx]++;
+  });
+  return counts;
 }
 
 function getMonthlyPresentCount(studentId){
@@ -1254,6 +1416,7 @@ dateInput.addEventListener('change', function(){
   renderAttendanceList();
   renderTodayMDM();
   document.getElementById('mdmSkipCheckbox').checked = !!mdmSkipCache[dateInput.value];
+  document.getElementById('zeroAttCheckbox').checked = !!zeroDayCache[dateInput.value];
   setMealTypeRadio(mdmMealTypeCache[dateInput.value] || 'sabzi');
 });
 
@@ -1270,6 +1433,19 @@ document.getElementById('mdmSkipCheckbox').addEventListener('change', async func
   renderMonthlyMDMIngredients();
 });
 
+// "आज उपस्थिति 0": us din shala lagi (teacher aaye) isliye shala ke din mein judega
+document.getElementById('zeroAttCheckbox').addEventListener('change', async function(e){
+  const date = dateInput.value;
+  if(e.target.checked){
+    zeroDayCache[date] = true;
+  }else{
+    delete zeroDayCache[date];
+  }
+  await persistZeroDays();
+  updateSchoolDays();
+  refreshCalendarIfOpen();
+});
+
 document.getElementById('mealTypeRow').addEventListener('change', async function(e){
   if(e.target.name !== 'mdmMealType') return;
   const date = dateInput.value;
@@ -1281,6 +1457,7 @@ document.getElementById('mealTypeRow').addEventListener('change', async function
 
 (async function init(){
   buildTabs();
+  buildSessionDropdown();
   buildMonthDropdown();
   await loadLocalFirst();
   loadPendingMarksForDate();
@@ -1289,6 +1466,7 @@ document.getElementById('mealTypeRow').addEventListener('change', async function
   renderMonthlyMDMIngredients();
   renderTodayMDM();
   document.getElementById('mdmSkipCheckbox').checked = !!mdmSkipCache[dateInput.value];
+  document.getElementById('zeroAttCheckbox').checked = !!zeroDayCache[dateInput.value];
   setMealTypeRadio(mdmMealTypeCache[dateInput.value] || 'sabzi');
   try{
     attachFirebaseListeners();
